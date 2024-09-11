@@ -100,3 +100,10 @@ fn chapter3c() -> Result<(), std::io::Error> {
     }
     Ok(())
 }
+
+
+pub const CHAPTER3D: Activity = Activity {
+    task: chapter3d,
+    name: "Making a prediction with multiple layers",
+    id: "3d",
+};
