@@ -101,9 +101,58 @@ fn chapter3c() -> Result<(), std::io::Error> {
     Ok(())
 }
 
-
 pub const CHAPTER3D: Activity = Activity {
     task: chapter3d,
     name: "Making a prediction with multiple layers",
     id: "3d",
 };
+
+fn chapter3d() -> Result<(), std::io::Error> {
+    fn neural_network(input: &Vec<f64>, weights: &Vec<Vec<Vec<f64>>>) -> Vec<Vec<f64>> {
+        let mut i = input.to_owned();
+        let mut res: Vec<Vec<f64>> = vec![];
+        for layer in weights {
+            for w in layer {
+                if input.len() != w.len() {
+                    panic!("input and weights must be of same length")
+                }
+            }
+            let r = mult_vect_matrix(&i, layer);
+            i = r.clone();
+            res.push(r);
+        }
+        res
+    }
+
+    let ih_wgt: Vec<Vec<f64>> = vec2d![[0.1, 0.2, -0.1], [-0.1, 0.1, 0.9], [0.1, 0.4, 0.1]];
+    let hp_wgt: Vec<Vec<f64>> = vec2d![[0.3, 1.1, -0.3], [0.1, 0.2, 0.0], [0.0, 1.3, 0.1]];
+    let weights: Vec<Vec<Vec<f64>>> = vec![ih_wgt, hp_wgt];
+
+    let toes = vec![8.5, 9.5, 10.0, 9.0];
+    let wlrec = vec![0.65, 0.8, 0.8, 0.9];
+    let nfans = vec![1.2, 1.3, 10.5, 1.0];
+
+    for (t, w, n) in izip!(toes, wlrec, nfans) {
+        let input = vec![t, w, n];
+        let pred = neural_network(&input, &weights);
+        println!("Input: {:?}", input);
+        for l in pred {
+            println!(
+                "Prediction(s): {:?}",
+                l.iter().map(|i| format!("{:.3}", i)).collect_vec(),
+            );
+        }
+    }
+    Ok(())
+}
+
+
+pub const CHAPTER3E: Activity = Activity {
+    task: chapter3e,
+    name: "Making a prediction with multiple layers using ndarray",
+    id: "3e",
+};
+
+fn chapter3e() -> Result<(), std::io::Error> {
+    todo!()
+}
