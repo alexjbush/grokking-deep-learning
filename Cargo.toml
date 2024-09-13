@@ -4,4 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+faer = "0.19.3"
 itertools = "0.13.0"
+nalgebra = "0.33.0"
+
+[profile.dev.package.faer]
+opt-level = 3

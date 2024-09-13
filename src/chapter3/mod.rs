@@ -1,5 +1,7 @@
 use crate::Activity;
+use faer::{mat, Mat};
 use itertools::{izip, Itertools};
+use nalgebra::{dmatrix, DMatrix};
 
 macro_rules!vec2d {
     [ $( [ $( $d:expr ),* ] ),* ] => {
@@ -146,13 +148,83 @@ fn chapter3d() -> Result<(), std::io::Error> {
     Ok(())
 }
 
-
-pub const CHAPTER3E: Activity = Activity {
-    task: chapter3e,
-    name: "Making a prediction with multiple layers using ndarray",
-    id: "3e",
+pub const CHAPTER3EI: Activity = Activity {
+    task: chapter3ei,
+    name: "Making a prediction with multiple layers using nalgebra",
+    id: "3ei",
 };
 
-fn chapter3e() -> Result<(), std::io::Error> {
-    todo!()
+fn chapter3ei() -> Result<(), std::io::Error> {
+    fn neural_network(input: &DMatrix<f64>, weights: &Vec<DMatrix<f64>>) -> Vec<DMatrix<f64>> {
+        let mut i: DMatrix<f64> = input.to_owned();
+        let mut res: Vec<DMatrix<f64>> = vec![];
+        for layer in weights {
+            let r: DMatrix<f64> = i * layer.transpose();
+            i = r.clone();
+            res.push(r);
+        }
+        res
+    }
+
+    let ih_wgt: DMatrix<f64> = dmatrix![0.1, 0.2, -0.1; -0.1, 0.1, 0.9; 0.1, 0.4, 0.1];
+    let hp_wgt: DMatrix<f64> = dmatrix![0.3, 1.1, -0.3; 0.1, 0.2, 0.0; 0.0, 1.3, 0.1];
+    let weights: Vec<DMatrix<f64>> = vec![ih_wgt, hp_wgt];
+
+    let toes = vec![8.5, 9.5, 10.0, 9.0];
+    let wlrec = vec![0.65, 0.8, 0.8, 0.9];
+    let nfans = vec![1.2, 1.3, 10.5, 1.0];
+
+    for (t, w, n) in izip!(toes, wlrec, nfans) {
+        let input: DMatrix<f64> = dmatrix![t, w, n];
+        let pred = neural_network(&input, &weights);
+        println!("Input: {:?}", input.iter().collect_vec());
+        for l in pred {
+            println!(
+                "Prediction(s): {:?}",
+                l.iter().map(|i| format!("{:.3}", i)).collect_vec(),
+            );
+        }
+    }
+    Ok(())
+}
+
+
+pub const CHAPTER3EII: Activity = Activity {
+    task: chapter3eii,
+    name: "Making a prediction with multiple layers using faer",
+    id: "3eii",
+};
+
+fn chapter3eii() -> Result<(), std::io::Error> {
+    fn neural_network(input: &Mat<f64>, weights: &Vec<Mat<f64>>) -> Vec<Mat<f64>> {
+        let mut i: Mat<f64> = input.to_owned();
+        let mut res: Vec<Mat<f64>> = vec![];
+        for layer in weights {
+            let r: Mat<f64> = i * layer.transpose();
+            i = r.clone();
+            res.push(r);
+        }
+        res
+    }
+
+    let ih_wgt: Mat<f64> = mat![[0.1, 0.2, -0.1], [-0.1, 0.1, 0.9], [0.1, 0.4, 0.1]];
+    let hp_wgt: Mat<f64> = mat![[0.3, 1.1, -0.3], [0.1, 0.2, 0.0], [0.0, 1.3, 0.1]];
+    let weights: Vec<Mat<f64>> = vec![ih_wgt, hp_wgt];
+
+    let toes = vec![8.5, 9.5, 10.0, 9.0];
+    let wlrec = vec![0.65, 0.8, 0.8, 0.9];
+    let nfans = vec![1.2, 1.3, 10.5, 1.0];
+
+    for (t, w, n) in izip!(toes, wlrec, nfans) {
+        let input: Mat<f64> = mat![[t, w, n]];
+        let pred = neural_network(&input, &weights);
+        println!("Input: {:?}", input.row_iter().flat_map(|f|f.iter()).collect_vec());
+        for l in pred {
+            println!(
+                "Prediction(s): {:?}",
+                l.row_iter().flat_map(|f|f.iter()).map(|i| format!("{:.3}", i)).collect_vec(),
+            );
+        }
+    }
+    Ok(())
 }
