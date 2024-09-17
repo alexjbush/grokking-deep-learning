@@ -1,7 +1,15 @@
-use crate::Activity;
+use crate::{Activity, Chapter};
 use faer::{mat, Mat};
 use itertools::{izip, Itertools};
 use nalgebra::{dmatrix, DMatrix};
+
+const ACTIVITIES: [Activity; 6] = [CHAPTER3A, CHAPTER3B, CHAPTER3C, CHAPTER3D, CHAPTER3EI, CHAPTER3EII];
+
+pub const CHAPTER: Chapter = Chapter {
+    activities: &ACTIVITIES,
+    name: "Introduction to neural prediction",
+    id: "3",
+};
 
 macro_rules!vec2d {
     [ $( [ $( $d:expr ),* ] ),* ] => {
@@ -13,7 +21,7 @@ macro_rules!vec2d {
     }
 }
 
-pub const CHAPTER3A: Activity = Activity {
+const CHAPTER3A: Activity = Activity {
     task: chapter3a,
     name: "Simple prediction",
     id: "3a",
@@ -33,7 +41,7 @@ fn chapter3a() -> Result<(), std::io::Error> {
     Ok(())
 }
 
-pub const CHAPTER3B: Activity = Activity {
+const CHAPTER3B: Activity = Activity {
     task: chapter3b,
     name: "Making a prediction with multiple inputs",
     id: "3b",
@@ -69,7 +77,7 @@ fn mult_vect_matrix(vect: &Vec<f64>, mat: &Vec<Vec<f64>>) -> Vec<f64> {
     mat.iter().map(|v| dot(v, vect)).collect()
 }
 
-pub const CHAPTER3C: Activity = Activity {
+const CHAPTER3C: Activity = Activity {
     task: chapter3c,
     name: "Making a prediction with multiple inputs and outputs",
     id: "3c",
@@ -103,7 +111,7 @@ fn chapter3c() -> Result<(), std::io::Error> {
     Ok(())
 }
 
-pub const CHAPTER3D: Activity = Activity {
+const CHAPTER3D: Activity = Activity {
     task: chapter3d,
     name: "Making a prediction with multiple layers",
     id: "3d",
@@ -148,7 +156,7 @@ fn chapter3d() -> Result<(), std::io::Error> {
     Ok(())
 }
 
-pub const CHAPTER3EI: Activity = Activity {
+const CHAPTER3EI: Activity = Activity {
     task: chapter3ei,
     name: "Making a prediction with multiple layers using nalgebra",
     id: "3ei",
@@ -189,7 +197,7 @@ fn chapter3ei() -> Result<(), std::io::Error> {
 }
 
 
-pub const CHAPTER3EII: Activity = Activity {
+const CHAPTER3EII: Activity = Activity {
     task: chapter3eii,
     name: "Making a prediction with multiple layers using faer",
     id: "3eii",
