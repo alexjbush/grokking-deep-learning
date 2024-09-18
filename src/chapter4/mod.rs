@@ -1,6 +1,6 @@
 use crate::{Activity, Chapter};
 
-const ACTIVITIES: [Activity; 2] = [CHAPTER4A, CHAPTER4B];
+const ACTIVITIES: [Activity; 3] = [CHAPTER4A, CHAPTER4B, CHAPTER4C];
 
 pub const CHAPTER: Chapter = Chapter {
     activities: &ACTIVITIES,
@@ -74,6 +74,39 @@ fn chapter4b() -> Result<(), std::io::Error> {
         else {
             let direction_and_amount = (prediction - goal_prediction) * input;
             weight = weight - direction_and_amount;
+        }
+
+    }
+    Ok(())
+}
+
+const CHAPTER4C: Activity = Activity {
+    task: chapter4c,
+    name: "Gradient descent",
+    id: "4c",
+};
+
+fn chapter4c() -> Result<(), std::io::Error> {
+    let mut weight: f64 = 0.5;
+    let input: f64 = 2.0;
+    let goal_prediction: f64 = 0.8;
+    let alpha = 0.1;
+
+    let tolerance: f64 = 0.000000001;
+
+    for iteration in  0..2000 {
+
+        let prediction = input * weight;
+        let error = (prediction - goal_prediction).powi(2);
+
+        println!("Iteration: {}, Error: {}, Prediction: {}", iteration, error, prediction);
+
+        if error < tolerance {
+            break;
+        }
+        else {
+            let derivative = (prediction - goal_prediction) * input;
+            weight = weight - alpha*derivative;
         }
 
     }
