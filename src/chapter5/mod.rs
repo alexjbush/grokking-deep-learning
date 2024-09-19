@@ -2,7 +2,7 @@ use std::f64::MAX;
 
 use crate::{Activity, Chapter};
 use itertools::izip;
-const ACTIVITIES: [Activity; 2] = [CHAPTER5A, CHAPTER5B];
+const ACTIVITIES: [Activity; 3] = [CHAPTER5A, CHAPTER5B, CHAPTER5C];
 
 pub const CHAPTER: Chapter = Chapter {
     activities: &ACTIVITIES,
@@ -20,6 +20,12 @@ const CHAPTER5B: Activity = Activity {
     task: chapter5b,
     name: "Freezing one weight",
     id: "5b",
+};
+
+const CHAPTER5C: Activity = Activity {
+    task: chapter5c,
+    name: "Gradient descent learning with multiple outputs",
+    id: "5c",
 };
 
 fn dot(i: &Vec<f64>, j: &Vec<f64>) -> f64 {
@@ -166,6 +172,74 @@ fn chapter5b() -> Result<(), std::io::Error> {
         let input = vec![t, w, n];
         let res = solve_weights(&input, &weights, wlb);
         println!("Input: {:?}, True value: {:.2}, Prediction: {:.2}, Error: {:.2}, Weights: {:?}, Iterations: {}", input, wlb, res.prediction, res.error, res.weights, res.iterations);
+    }
+    Ok(())
+
+}
+
+
+
+
+fn chapter5c() -> Result<(), std::io::Error> {
+
+    struct Output {
+        weights: Vec<f64>,
+        prediction: Vec<f64>,
+        iterations: i16,
+        error: Vec<f64>
+    }
+
+    const ALPHA: f64 = 0.1;
+    const TOLERANCE: f64 = 0.000000001;
+    const MAX_ITERATIONS: i16 = 2000;
+
+    fn solve_weights(input:f64 , weights: &Vec<f64>, true_values: &Vec<f64>) -> Output {
+        let mut weights = weights.to_owned();
+
+        let mut error: Vec<f64> = vec![];
+        let mut pred: Vec<f64> = vec![];
+
+        for iteration in  0..MAX_ITERATIONS {
+
+            pred = ele_mul(input, &weights);
+            let delta: Vec<f64> = pred.iter().zip(true_values.iter()).map(|(p, t)| p - t).collect();
+            error = delta.iter().map(|d| d*d).collect();
+
+            if error.iter().all(|e| *e < TOLERANCE) {
+                return Output {
+                    weights,
+                    prediction: pred,
+                    iterations: iteration,
+                    error
+                };
+            }
+
+            let mut weight_deltas = ele_mul(-1.0*input*ALPHA, &delta);
+            add(&mut weights, &weight_deltas);
+
+        }
+
+        return Output {
+            weights,
+            prediction: pred,
+            iterations: MAX_ITERATIONS,
+            error
+        };
+
+    }
+    let hurt: Vec<f64> = vec![0.1, 0.0, 0.0, 0.9]; 
+    let win: Vec<f64> = vec![1.0,1.0,0.0,1.0];
+    let sad: Vec<f64> = vec![0.1, 0.0, 0.1, 0.2]; 
+
+    let wlrec = vec![0.65, 0.8, 0.8, 0.9];
+
+    let weights = vec![0.3, 0.2, 0.9];
+
+    for (wl, h, w, s) in izip!(wlrec, hurt, win, sad) {
+        let input = wl;
+        let true_values  = vec![h, w, s];
+        let res = solve_weights(input, &weights, &true_values);
+        println!("Input: {:?}, True values: {:?}, Prediction: {:?}, Error: {:?}, Weights: {:?}, Iterations: {}", input, true_values, res.prediction, res.error, res.weights, res.iterations);
     }
     Ok(())
 
