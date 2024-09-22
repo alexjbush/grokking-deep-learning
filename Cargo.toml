@@ -7,6 +7,7 @@ edition = "2021"
 faer = "0.19.3"
 itertools = "0.13.0"
 nalgebra = "0.33.0"
+ndarray = "0.16.1"
 
 [profile.dev.package.faer]
 opt-level = 3
