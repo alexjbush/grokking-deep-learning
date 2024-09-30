@@ -1,6 +1,8 @@
 use crate::{Activity, Chapter};
 use ndarray::{array, Array, ArrayBase, Dim, OwnedRepr};
-const ACTIVITIES: [Activity; 2] = [CHAPTER6A, CHAPTER6B];
+const ACTIVITIES: [Activity; 3] = [CHAPTER6A, CHAPTER6B, CHAPTER6C];
+use ndarray_rand::{rand::SeedableRng, rand_distr::Uniform, RandomExt};
+use rand_chacha::ChaCha8Rng;
 
 pub const CHAPTER: Chapter = Chapter {
     activities: &ACTIVITIES,
@@ -117,6 +119,55 @@ fn chapter6b() -> Result<(), std::io::Error> {
             println!(
                 "Iterations: {}, Error: {}, Weights: {:?}",
                 iteration, error_for_all_lights, weights
+            );
+            complete = true;
+            break;
+        }
+    }
+
+    if !complete {
+        println!("Failed to find solution under tolerance.")
+    }
+
+    Ok(())
+}
+
+const CHAPTER6C: Activity = Activity {
+    task: chapter6c,
+    name: "Putting it all together",
+    id: "6c",
+};
+
+fn chapter6c() -> Result<(), std::io::Error> {
+    let mut rng = ChaCha8Rng::seed_from_u64(1);
+
+    let streetlights = array![
+        [1.0, 0.0, 1.0],
+        [0.0, 1.0, 1.0],
+        [0.0, 0.0, 1.0],
+        [1.0, 1.0, 1.0],
+    ];
+
+    let walk_vs_stop = array![0.0, 1.0, 0.0, 1.0, 1.0, 0.0].t();
+
+    const ALPHA: f64 = 0.2;
+    const HIDDEN_SIZE: usize = 4;
+
+    let tolerance = 0.000000001;
+    let max_iterations = 20000;
+
+    let mut weights_0_1 = Array::random_using((3, HIDDEN_SIZE), Uniform::new(-1,1), &mut rng);
+    let mut weights_1_2 = Array::random_using(HIDDEN_SIZE, Uniform::new(-1,1), &mut rng);
+    
+    let mut complete = false;
+
+    for iteration in 0..max_iterations {
+        let mut layer_2_error = 0.0;
+
+        if layer_2_error < tolerance {
+            println!(
+                "Iterations: {}, Error: {:?}, Weights 0->1: {:?}, Weights 1->2: {:?}",
+                iteration, layer_2_error, weights_0_1, weights_1_2
             );
             complete = true;
             break;
