@@ -1,5 +1,5 @@
 use crate::{Activity, Chapter};
-use ndarray::{array, Array, ArrayBase, Dim, OwnedRepr};
+use ndarray::{array, s, Array, ArrayBase, Dim, OwnedRepr};
 const ACTIVITIES: [Activity; 3] = [CHAPTER6A, CHAPTER6B, CHAPTER6C];
 use ndarray_rand::{rand::SeedableRng, rand_distr::Uniform, RandomExt};
 use rand_chacha::ChaCha8Rng;
@@ -138,6 +138,26 @@ const CHAPTER6C: Activity = Activity {
     id: "6c",
 };
 
+fn relu(m: &ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>>) -> ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>> {
+    m.map(|v| {
+        if *v > 0.0 {
+            return *v
+        } else {
+            return 0.0
+        }
+    })
+}
+
+fn relu2deriv(m: &ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>>) -> ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>> {
+    m.map(|v| {
+        if *v > 0.0 {
+            return 1.0
+        } else {
+            return 0.0
+        }
+    })
+}
+
 fn chapter6c() -> Result<(), std::io::Error> {
     let mut rng = ChaCha8Rng::seed_from_u64(1);
 
@@ -148,7 +168,7 @@ fn chapter6c() -> Result<(), std::io::Error> {
         [1.0, 1.0, 1.0],
     ];
 
-    let walk_vs_stop = array![0.0, 1.0, 0.0, 1.0, 1.0, 0.0].t();
+    let walk_vs_stop = array![0.0, 1.0, 0.0, 1.0, 1.0, 0.0].t().to_owned();
 
     const ALPHA: f64 = 0.2;
     const HIDDEN_SIZE: usize = 4;
@@ -156,13 +176,32 @@ fn chapter6c() -> Result<(), std::io::Error> {
     let tolerance = 0.000000001;
     let max_iterations = 20000;
 
-    let mut weights_0_1 = Array::random_using((3, HIDDEN_SIZE), Uniform::new(-1,1), &mut rng);
-    let mut weights_1_2 = Array::random_using(HIDDEN_SIZE, Uniform::new(-1,1), &mut rng);
+    let mut weights_0_1 = Array::random_using((3, HIDDEN_SIZE), Uniform::new(-1.0,1.0), &mut rng);
+    let mut weights_1_2 = Array::random_using((HIDDEN_SIZE, 1), Uniform::new(-1.0,1.0), &mut rng);
     
     let mut complete = false;
 
     for iteration in 0..max_iterations {
         let mut layer_2_error = 0.0;
+
+        for i in 0..streetlights.dim().0 {
+            let layer_0: ArrayBase<ndarray::ViewRepr<&f64>, Dim<[usize; 2]>> = streetlights.slice(s![i..i+1,..]);
+            let layer_1 = relu(&layer_0.dot(&weights_0_1));
+            let layer_2 = layer_1.dot(&weights_1_2);
+
+            let layer_2_delta: ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>> = layer_2 - walk_vs_stop[i];
+            layer_2_error += layer_2_delta.map(|v| *v * *v).sum();
+
+            let layer_1_delta = layer_2_delta.dot(&weights_1_2.t()) * relu2deriv(&layer_1);
+
+            weights_1_2 = weights_1_2 - ALPHA * (layer_1.t().dot(&layer_2_delta));
+            weights_0_1 = weights_0_1 - ALPHA * (layer_0.t().dot(&layer_1_delta));
+
+        }
+
+        if iteration % 10 == 9 {
+            println!("Error: {}", layer_2_error)
+        }
 
         if layer_2_error < tolerance {
             println!(
