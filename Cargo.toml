@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 faer = "0.19.3"
 itertools = "0.13.0"
+mnist = { version = "0.6.0", features = ["download"] }
 nalgebra = "0.33.0"
 ndarray = "0.16.1"
 ndarray-rand = "0.15.0"
