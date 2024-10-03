@@ -52,7 +52,7 @@ fn chapter8a() -> Result<(), std::io::Error> {
         tst_img,
         tst_lbl,
         ..
-    } = MnistBuilder::new().download_and_extract().label_format_one_hot().finalize();
+    } = MnistBuilder::new().base_path(".data/").base_url("https://azureopendatastorage.blob.core.windows.net/mnist").download_and_extract().label_format_one_hot().finalize();
 
     let train_images = Array2::from_shape_vec((50_000, 28 * 28), trn_img)
         .expect("Error converting images to Array2 struct")
