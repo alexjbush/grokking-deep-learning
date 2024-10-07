@@ -1,6 +1,6 @@
 use crate::{Activity, Chapter};
 use ndarray::{array, s, Array, Array2, ArrayBase, Dim, OwnedRepr};
-const ACTIVITIES: [Activity; 3] = [CHAPTER8A, CHAPTER8B, CHAPTER8C];
+const ACTIVITIES: [Activity; 4] = [CHAPTER8A, CHAPTER8B, CHAPTER8C, CHAPTER8D];
 use mnist::*;
 use ndarray_rand::{rand::SeedableRng, rand_distr::Uniform, RandomExt};
 use ndarray_stats::QuantileExt;
@@ -28,6 +28,12 @@ const CHAPTER8C: Activity = Activity {
     task: chapter8c,
     name: "Early Stopping",
     id: "8c",
+};
+
+const CHAPTER8D: Activity = Activity {
+    task: chapter8d,
+    name: "Drop out",
+    id: "8d",
 };
 
 fn relu(
@@ -428,6 +434,131 @@ fn chapter8c() -> Result<(), std::io::Error> {
             );
             break;
         }
+    }
+
+    Ok(())
+}
+
+
+fn chapter8d() -> Result<(), std::io::Error> {
+    let alpha = 0.005;
+    let tolerance = 0.000000001;
+    let max_iterations = 350;
+    let hidden_size = 40;
+    let pixels_per_image = 784;
+    let num_labels = 10;
+    let train_image_count: usize = 1_000;
+    let test_image_count: usize = 10_000;
+
+    let Mnist {
+        trn_img,
+        trn_lbl,
+        tst_img,
+        tst_lbl,
+        ..
+    } = MnistBuilder::new()
+        .training_set_length(train_image_count as u32)
+        .test_set_length(test_image_count as u32)
+        .base_path(".data/")
+        .base_url("https://azureopendatastorage.blob.core.windows.net/mnist")
+        .download_and_extract()
+        .label_format_one_hot()
+        .finalize();
+
+    let images = Array2::from_shape_vec((train_image_count, 28 * 28), trn_img)
+        .expect("Error converting images to Array2 struct")
+        .map(|x| *x as f64 / 256.0);
+
+    let labels = Array2::from_shape_vec((train_image_count, 10), trn_lbl)
+        .expect("Error converting training labels to Array2 struct")
+        .map(|x| *x as f64);
+
+    let test_images = Array2::from_shape_vec((test_image_count, 28 * 28), tst_img)
+        .expect("Error converting images to Array2 struct")
+        .map(|x| *x as f64 / 256.0);
+
+    let test_labels = Array2::from_shape_vec((test_image_count, 10), tst_lbl)
+        .expect("Error converting training labels to Array2 struct")
+        .map(|x| *x as f64);
+
+    let mut complete = false;
+    let mut rng = ChaCha8Rng::seed_from_u64(1);
+
+    let mut weights_0_1 = Array::random_using(
+        (pixels_per_image, hidden_size),
+        Uniform::new(-0.1, 0.1),
+        &mut rng,
+    );
+    let mut weights_1_2 =
+        Array::random_using((hidden_size, num_labels), Uniform::new(-0.1, 0.1), &mut rng);
+
+    for iteration in 0..max_iterations {
+        let mut layer_2_error = 0.0;
+        let mut correct_cnt: usize = 0;
+
+        for i in 0..train_image_count {
+            let layer_0: ArrayBase<ndarray::ViewRepr<&f64>, Dim<[usize; 2]>> =
+                images.slice(s![i..i + 1, ..]);
+            let mut _layer_1 = relu(&layer_0.dot(&weights_0_1));
+            let mask = Array::random_using(_layer_1.raw_dim(), Uniform::new(0, 2), &mut rng).map(|e| *e as f64);
+            let layer_1 = _layer_1 * &mask * 2.0;
+            let layer_2 = layer_1.dot(&weights_1_2);
+
+            let layer_2_delta: ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>> =
+                &layer_2 - &labels.slice(s![i..i + 1, ..]);
+            layer_2_error += layer_2_delta.map(|v| *v * *v).sum();
+
+            let correct =
+                layer_2.argmax().unwrap().1 == labels.slice(s![i..i + 1, ..]).argmax().unwrap().1;
+            if correct {
+                correct_cnt += 1;
+            }
+
+            let layer_1_delta = layer_2_delta.dot(&weights_1_2.t()) * relu2deriv(&layer_1) * mask;
+
+            weights_1_2 = weights_1_2 - alpha * (layer_1.t().dot(&layer_2_delta));
+            weights_0_1 = weights_0_1 - alpha * (layer_0.t().dot(&layer_1_delta));
+        }
+
+        if iteration % 10 == 0 || iteration == max_iterations - 1 {
+            let mut test_layer_2_error = 0.0;
+            let mut test_correct_cnt: usize = 0;
+
+            for i in 0..test_image_count {
+                let layer_0: ArrayBase<ndarray::ViewRepr<&f64>, Dim<[usize; 2]>> =
+                    test_images.slice(s![i..i + 1, ..]);
+                let layer_1 = relu(&layer_0.dot(&weights_0_1));
+                let layer_2 = layer_1.dot(&weights_1_2);
+
+                let layer_2_delta: ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>> =
+                    &layer_2 - &test_labels.slice(s![i..i + 1, ..]);
+                test_layer_2_error += layer_2_delta.map(|v| *v * *v).sum();
+
+                let correct = layer_2.argmax().unwrap().1
+                    == test_labels.slice(s![i..i + 1, ..]).argmax().unwrap().1;
+                if correct {
+                    test_correct_cnt += 1;
+                }
+            }
+
+            println!(
+                "Iterations: {}, Train-Error: {:.3}, Train-Correct: {:.3}, Test-Error: {:.3}, Test-Correct: {:.3}",
+                iteration,
+                layer_2_error as f64 / train_image_count as f64,
+                correct_cnt as f64 / train_image_count as f64,
+                test_layer_2_error as f64 / test_image_count as f64,
+                test_correct_cnt as f64 / test_image_count as f64
+            );
+        }
+
+        if layer_2_error < tolerance {
+            complete = true;
+            break;
+        }
+    }
+
+    if !complete {
+        println!("Failed to find solution under tolerance.")
     }
 
     Ok(())
