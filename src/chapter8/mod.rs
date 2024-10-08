@@ -790,9 +790,18 @@ fn chapter8f() -> Result<(), std::io::Error> {
             );
             layer_1 = layer_1 * &mask * 2.0;
             let layer_2 = layer_1.dot(&weights_1_2);
-            let layer_2_delta = &layer_2 - &labels.slice(s![batch_start..batch_end, ..]);
-            layer_2_error += layer_2_delta.map(|v| *v * *v).sum();
+            layer_2_error += (&layer_2 - &labels.slice(s![batch_start..batch_end, ..]))
+                .map(|v| *v * *v)
+                .sum();
 
+            let layer_2_delta =
+                (&layer_2 - &labels.slice(s![batch_start..batch_end, ..])) / batch_size as f64;
+            let layer_1_delta = layer_2_delta.dot(&weights_1_2.t()) * relu2deriv(&layer_1) * &mask;
+
+            weights_1_2 =
+                weights_1_2 - (alpha * batch_size as f64) * (layer_1.t().dot(&layer_2_delta));
+            weights_0_1 =
+                weights_0_1 - (alpha * batch_size as f64) * (layer_0.t().dot(&layer_1_delta));
             for k in 0..batch_size {
                 let correct = &layer_2.row(k).argmax().unwrap()
                     == &labels.row(batch_start + k).argmax().unwrap();
@@ -800,11 +809,6 @@ fn chapter8f() -> Result<(), std::io::Error> {
                     correct_cnt += 1;
                 }
             }
-
-            let layer_1_delta = layer_2_delta.dot(&weights_1_2.t()) * relu2deriv(&layer_1) * &mask;
-
-            weights_1_2 = weights_1_2 - alpha * (layer_1.t().dot(&layer_2_delta));
-            weights_0_1 = weights_0_1 - alpha * (layer_0.t().dot(&layer_1_delta));
         }
         let duration = start.elapsed();
         total_duration += duration;
