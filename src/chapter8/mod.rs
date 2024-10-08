@@ -721,7 +721,7 @@ fn chapter8e() -> Result<(), std::io::Error> {
 
 // Note this one does the sum rather than avg
 fn chapter8f() -> Result<(), std::io::Error> {
-    let alpha = 0.001;
+    let alpha = 0.1;
     let max_iterations = 300;
     let hidden_size = 100;
     let pixels_per_image = 784;
@@ -799,9 +799,9 @@ fn chapter8f() -> Result<(), std::io::Error> {
             let layer_1_delta = layer_2_delta.dot(&weights_1_2.t()) * relu2deriv(&layer_1) * &mask;
 
             weights_1_2 =
-                weights_1_2 - (alpha * batch_size as f64) * (layer_1.t().dot(&layer_2_delta));
+                weights_1_2 - (alpha ) * (layer_1.t().dot(&layer_2_delta));
             weights_0_1 =
-                weights_0_1 - (alpha * batch_size as f64) * (layer_0.t().dot(&layer_1_delta));
+                weights_0_1 - (alpha ) * (layer_0.t().dot(&layer_1_delta));
             for k in 0..batch_size {
                 let correct = &layer_2.row(k).argmax().unwrap()
                     == &labels.row(batch_start + k).argmax().unwrap();
