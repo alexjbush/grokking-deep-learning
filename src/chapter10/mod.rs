@@ -129,7 +129,9 @@ fn chapter10a() -> Result<(), std::io::Error> {
         for i in 0..(train_image_count / batch_size) {
             let batch_start = i * batch_size;
             let batch_end = (i + 1) * batch_size;
-            let layer_0 = images.slice(s![batch_start..batch_end, ..]);
+            let _layer_0 = images.slice(s![batch_start..batch_end, ..]);
+            let layer_0 = _layer_0.to_shape((_layer_0.dim().0, 20, 28)).unwrap();
+            //here
             let mut layer_1 = tanh(&layer_0.dot(&weights_0_1));
             let mask = Array::random_using(
                 layer_1.raw_dim(),
