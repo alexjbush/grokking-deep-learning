@@ -1,7 +1,10 @@
 use std::time::{Duration, Instant};
 
 use crate::{Activity, Chapter};
-use ndarray::{s, Array, Array2, ArrayBase, Axis, Dim, Dimension, OwnedRepr};
+use ndarray::{
+    array, concatenate, s, Array, Array2, Array5, ArrayBase, Axis, CowRepr, Dim, Dimension,
+    OwnedRepr, ViewRepr,
+};
 const ACTIVITIES: [Activity; 1] = [CHAPTER10A];
 use mnist::*;
 use ndarray_rand::{
@@ -45,7 +48,7 @@ fn softmax(
 }
 
 fn get_image_section(
-    layer: &ArrayBase<OwnedRepr<f64>, Dim<[usize; 3]>>,
+    layer: &ArrayBase<CowRepr<f64>, Dim<[usize; 3]>>,
     row_from: usize,
     row_to: usize,
     col_from: usize,
@@ -56,14 +59,13 @@ fn get_image_section(
     let dim2 = row_to - row_from;
     let dim1 = 1;
     let dim0 = section.raw_dim().size() / (dim3 * dim2 * dim1);
-    return section.to_shape((dim0, 1, row_to - row_from, col_to - col_from)).unwrap().try_into_owned_nocopy().unwrap();
+    let new_shape = (dim0, 1, row_to - row_from, col_to - col_from);
+    return section.to_shape(new_shape).unwrap().to_owned();
 }
 
 fn chapter10a() -> Result<(), std::io::Error> {
     let alpha = 2.0;
     let max_iterations = 300;
-    let hidden_size = 100;
-    let pixels_per_image = 784;
     let num_labels = 10;
     let train_image_count: usize = 1_000;
     let test_image_count: usize = 10_000;
@@ -130,9 +132,43 @@ fn chapter10a() -> Result<(), std::io::Error> {
             let batch_start = i * batch_size;
             let batch_end = (i + 1) * batch_size;
             let _layer_0 = images.slice(s![batch_start..batch_end, ..]);
-            let layer_0 = _layer_0.to_shape((_layer_0.dim().0, 20, 28)).unwrap();
+            let layer_0 = _layer_0.to_shape((_layer_0.dim().0, 28, 28)).unwrap();
+
+            let row_count = layer_0.dim().1 - kernel_rows;
+            let col_count = layer_0.dim().2 - kernel_cols;
+            let mut sects = vec![];
+
+            for row_start in 0..(row_count) {
+                for col_start in 0..(col_count) {
+                    let sect = get_image_section(
+                        &layer_0,
+                        row_start,
+                        row_start + kernel_rows,
+                        col_start,
+                        col_start + kernel_cols,
+                    );
+                    sects.push(sect);
+                }
+            }
+            let sects_view: Vec<ArrayBase<ViewRepr<&f64>, Dim<[usize; 4]>>> =
+                sects.iter().map(|v| v.view()).collect();
+            let expanded_input = concatenate(Axis(1), &sects_view[..]).unwrap();
+
+            let dim0 = expanded_input.dim().0 * expanded_input.dim().1;
+            let dim1 = expanded_input.raw_dim().size() / dim0;
+            let flattened_input = expanded_input.to_shape((dim0, dim1)).unwrap();
+
             //here
-            let mut layer_1 = tanh(&layer_0.dot(&weights_0_1));
+            let kernel_output = flattened_input.dot(&kernels);
+            let mut layer_1 = tanh(
+                &kernel_output
+                    .to_shape((
+                        expanded_input.dim().0,
+                        kernel_output.raw_dim().size() / expanded_input.dim().0,
+                    ))
+                    .unwrap()
+                    .to_owned(),
+            );
             let mask = Array::random_using(
                 layer_1.raw_dim(),
                 Uniform::new(0, 2).map(|e| e as f64),
@@ -146,7 +182,11 @@ fn chapter10a() -> Result<(), std::io::Error> {
             let layer_1_delta = layer_2_delta.dot(&weights_1_2.t()) * tanh2deriv(&layer_1) * &mask;
 
             weights_1_2 = weights_1_2 - (alpha) * (layer_1.t().dot(&layer_2_delta));
-            weights_0_1 = weights_0_1 - (alpha) * (layer_0.t().dot(&layer_1_delta));
+
+            let l1d_reshape = layer_1_delta.to_shape(kernel_output.dim()).unwrap();
+
+            let k_update = flattened_input.t().dot(&l1d_reshape);
+            kernels = kernels - (alpha) * k_update;
             for k in 0..batch_size {
                 let correct = &layer_2.row(k).argmax().unwrap()
                     == &labels.row(batch_start + k).argmax().unwrap();
@@ -162,9 +202,51 @@ fn chapter10a() -> Result<(), std::io::Error> {
             let mut test_correct_cnt: usize = 0;
 
             for i in 0..test_image_count {
-                let layer_0: ArrayBase<ndarray::ViewRepr<&f64>, Dim<[usize; 2]>> =
-                    test_images.slice(s![i..i + 1, ..]);
-                let layer_1 = tanh(&layer_0.dot(&weights_0_1));
+                let _layer_0 = test_images.slice(s![i..i + 1, ..]);
+                let layer_0 = _layer_0.to_shape((_layer_0.dim().0, 28, 28)).unwrap();
+
+                let row_count = layer_0.dim().1 - kernel_rows;
+                let col_count = layer_0.dim().2 - kernel_cols;
+                let mut sects = vec![];
+
+                for row_start in 0..(row_count) {
+                    for col_start in 0..(col_count) {
+                        let sect = get_image_section(
+                            &layer_0,
+                            row_start,
+                            row_start + kernel_rows,
+                            col_start,
+                            col_start + kernel_cols,
+                        );
+                        sects.push(sect);
+                    }
+                }
+                let sects_view: Vec<ArrayBase<ViewRepr<&f64>, Dim<[usize; 4]>>> =
+                    sects.iter().map(|v| v.view()).collect();
+                let expanded_input = concatenate(Axis(1), &sects_view[..]).unwrap();
+                let dim0 = expanded_input.dim().0 * expanded_input.dim().1;
+                let dim1 = expanded_input.raw_dim().size() / dim0;
+                let flattened_input = expanded_input.to_shape((dim0, dim1)).unwrap();
+
+                //here
+                let kernel_output = flattened_input.dot(&kernels);
+                let mut layer_1 = tanh(
+                    &kernel_output
+                        .to_shape((
+                            expanded_input.dim().0,
+                            kernel_output.raw_dim().size() / expanded_input.dim().0,
+                        ))
+                        .unwrap()
+                        .to_owned(),
+                );
+
+                let mask = Array::random_using(
+                    layer_1.raw_dim(),
+                    Uniform::new(0, 2).map(|e| e as f64),
+                    &mut rng,
+                );
+                layer_1 = layer_1 * &mask * 2.0;
+
                 let layer_2 = layer_1.dot(&weights_1_2);
 
                 let correct = layer_2.argmax().unwrap().1
