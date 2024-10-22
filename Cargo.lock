@@ -475,13 +475,16 @@ dependencies = [
 name = "grokking-deep-learning"
 version = "0.1.0"
 dependencies = [
+ "curl",
  "faer",
  "itertools",
+ "log",
  "mnist",
  "nalgebra",
  "ndarray",
  "ndarray-rand",
  "ndarray-stats",
+ "pbr",
  "rand_chacha",
 ]
 
