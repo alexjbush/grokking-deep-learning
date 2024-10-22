@@ -1,5 +1,5 @@
 use std::time::{Duration, Instant};
-use crate::utils::{download_files, BASE_PATH, GROKKING_BASE_URL};
+use crate::utils::{download_files, BASE_PATH, GROKKING_BASE_URL, read_lines};
 
 use crate::{Activity, Chapter};
 use ndarray::{
