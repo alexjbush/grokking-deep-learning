@@ -1,5 +1,8 @@
+use std::path::Path;
 use std::time::{Duration, Instant};
 use crate::utils::{download_files, BASE_PATH, GROKKING_BASE_URL, read_lines};
+use std::collections::HashSet;
+use std::iter::FromIterator;
 
 use crate::{Activity, Chapter};
 use ndarray::{
@@ -62,6 +65,13 @@ fn softmax(
 fn chapter11a() -> Result<(), std::io::Error> {
 
     download_files(GROKKING_BASE_URL, BASE_PATH, FILES_TO_DOWNLOAD).unwrap();
+
+    let raw_reviews:Vec<String> = read_lines(Path::new(BASE_PATH).join(FILE_REVIEWS)).unwrap().flatten().collect();
+    let raw_labels :Vec<String>= read_lines(Path::new(BASE_PATH).join(FILE_LABELS)).unwrap().flatten().collect();
+
+    let tokens: Vec<HashSet<&str>> = raw_reviews.iter().map( |s| s.split_whitespace().collect::<HashSet<&str>>()).collect();
+    
+    let vocab: Vec<&str> = tokens.iter().flat_map(|sent| sent.iter().filter(|word| word.len() > 0)).collect::<HashSet<&&str>>().iter().map(|w| **w).collect();
     todo!()
     
 }
