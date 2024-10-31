@@ -6,11 +6,11 @@ use std::iter::FromIterator;
 
 use crate::{Activity, Chapter};
 use ndarray::{
-    array, concatenate, s, Array, Array2, Array5, ArrayBase, Axis, CowRepr, Dim, Dimension,
-    OwnedRepr, ViewRepr,
+    array, concatenate, s, Array, Array2, Array5, ArrayBase, Axis, CowRepr, Data, Dim, Dimension, Ix1, Ix2, NdFloat, OwnedRepr, ViewRepr
 };
 const ACTIVITIES: [Activity; 1] = [CHAPTER11A];
 use mnist::*;
+use ndarray_rand::rand_distr::num_traits::ToPrimitive;
 use ndarray_rand::{
     rand::SeedableRng,
     rand_distr::{Distribution, Uniform},
@@ -63,9 +63,28 @@ fn softmax(
 }
 
 fn sigmoid(
-    m: &ArrayBase<OwnedRepr<f64>, Dim<[usize; 1]>>,
-) -> ArrayBase<OwnedRepr<f64>, Dim<[usize; 1]>> {
+    m: &ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>>,
+) -> ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>> {
     m.map(|v| return 1.0 / (1.0 + (-1.0 * v).exp()))
+}
+
+fn outer<A, S1, S2>(a: &ArrayBase<S1, Ix1>, b: &ArrayBase<S2, Ix1>) -> Array<A, Ix2>
+    where A: NdFloat,
+          S1: Data<Elem = A>,
+          S2: Data<Elem = A>
+{
+    let m = a.len();
+    let n = b.len();
+    let mut ab = Array::zeros((m, n));
+
+    for row in 0..m {
+        for col in 0..n {
+            let v = ab.get_mut((row, col)).unwrap();
+            *v = *a.get(row).unwrap() * *b.get(col).unwrap();
+        }
+    }
+    return ab;
+    
 }
 
 fn chapter11a() -> Result<(), std::io::Error> {
@@ -126,8 +145,32 @@ fn chapter11a() -> Result<(), std::io::Error> {
             let x = &input_dataset[i];
             let y = target_dataset[i];
 
-            let layer_1 = sigmoid(&weights_0_1.row(i).sum_axis(Axis(0)).insert_axis(Axis(0)));
+            let layer_1 = sigmoid(&weights_0_1.select(Axis(0), x).sum_axis(Axis(0)).insert_axis(Axis(0)));
             let layer_2 = sigmoid(&layer_1.dot(&weights_1_2));
+
+            let layer_2_delta = layer_2 - y;
+            let layer_1_delta = layer_2_delta.dot(&weights_1_2.t());
+
+
+            // let t: ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>> = weights_0_1.select(Axis(0), x)- layer_1_delta*alpha;
+            // weights_0_1 = t.select(Axis(0), x);
+
+            for j in x {
+                let mut row = weights_0_1.row_mut(*j);
+                row.iter_mut().zip((&layer_1_delta*alpha).row(0).iter()).for_each(|(v, l)| *v = *v - l);
+            }
+            //assert todo
+            weights_1_2 = weights_1_2 - outer(&layer_1.row(0), &layer_2_delta.row(0));
+
+            if (*layer_2_delta.abs().get((0,0)).unwrap() < 0.5) {
+                correct += 1;
+            }
+            total +=1;
+
+            if (i%10 == 9) {
+                let progress = (i.to_f64().unwrap() / (input_dataset.len() - 1000).to_f64().unwrap())*100.0;
+                println!("Iter: {}, Progress: {:.2}%, Training Accuracy: {:.2}, Correct: {}, Total: {}", iteration, progress, correct.to_f64().unwrap() / total.to_f64().unwrap(), correct, total);
+            }
 
         }
 
