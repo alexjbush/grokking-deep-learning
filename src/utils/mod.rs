@@ -1,4 +1,4 @@
-use std::{fs::File, io::{self, BufRead}, path::{Path, PathBuf}, thread};
+use std::{fs::File, io::{self, BufRead}, path::{Path, PathBuf}, thread, time};
 use std::io::{Write};
 
 use std::fs;
@@ -84,7 +84,7 @@ fn download(
                 current_size = file_size(&meta);
 
                 pb.set(current_size.try_into().unwrap());
-                thread::sleep_ms(10);
+                thread::sleep(time::Duration::from_millis(10));
             }
             pb.finish_println(" ");
         });

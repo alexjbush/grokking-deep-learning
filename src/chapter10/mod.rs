@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use crate::{Activity, Chapter};
 use ndarray::{
-    array, concatenate, s, Array, Array2, Array5, ArrayBase, Axis, CowRepr, Dim, Dimension,
+    concatenate, s, Array, Array2, ArrayBase, Axis, CowRepr, Dim, Dimension,
     OwnedRepr, ViewRepr,
 };
 const ACTIVITIES: [Activity; 1] = [CHAPTER10A];
