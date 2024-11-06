@@ -4,7 +4,7 @@ use std::path::Path;
 
 use crate::{Activity, Chapter};
 use ndarray::{Array, ArrayBase, Axis, Data, Dim, Ix1, Ix2, NdFloat, OwnedRepr};
-const ACTIVITIES: [Activity; 2] = [CHAPTER11A, CHAPTER11B];
+const ACTIVITIES: [Activity; 3] = [CHAPTER11A, CHAPTER11B, CHAPTER11C];
 use ndarray_rand::rand::seq::SliceRandom;
 use ndarray_rand::rand_distr::num_traits::ToPrimitive;
 use ndarray_rand::{rand::SeedableRng, rand_distr::Uniform, RandomExt};
@@ -36,6 +36,12 @@ const CHAPTER11B: Activity = Activity {
     task: chapter11b,
     name: "Comparing word embeddings",
     id: "11b",
+};
+
+const CHAPTER11C: Activity = Activity {
+    task: chapter11c,
+    name: "Filling in the blank",
+    id: "11c",
 };
 
 fn sigmoid(
@@ -357,7 +363,7 @@ fn chapter11c() -> Result<(), std::io::Error> {
     let mut wordcnt: HashMap<&str, isize> = HashMap::new();
     for sent in &tokens {
         for word in sent {
-            if  let Some(x) = wordcnt.get_mut(word) {
+            if let Some(x) = wordcnt.get_mut(word) {
                 *x -= 1;
             } else {
                 wordcnt.insert(word, -1);
@@ -368,7 +374,6 @@ fn chapter11c() -> Result<(), std::io::Error> {
     _wordcnt.sort_by(|(_, a), (_, b)| b.cmp(a));
     let wordcnt = _wordcnt;
 
-
     let vocab: Vec<&str> = wordcnt
         .into_iter()
         .map(|(word, _)| word)
@@ -376,7 +381,11 @@ fn chapter11c() -> Result<(), std::io::Error> {
         .into_iter()
         .collect();
 
-    let word2index: HashMap<&str, usize> = (&vocab).into_iter().enumerate().map(|f| (*f.1, f.0)).collect();
+    let word2index: HashMap<&str, usize> = (&vocab)
+        .into_iter()
+        .enumerate()
+        .map(|f| (*f.1, f.0))
+        .collect();
 
     let mut concatenated: Vec<usize> = vec![];
     let mut input_dataset: Vec<Vec<usize>> = vec![];
@@ -399,7 +408,7 @@ fn chapter11c() -> Result<(), std::io::Error> {
     }
 
     let concatenated = Array::from_vec(concatenated);
-    
+
     let mut rng = ChaCha8Rng::seed_from_u64(1);
     input_dataset.shuffle(&mut rng);
 
@@ -414,7 +423,6 @@ fn chapter11c() -> Result<(), std::io::Error> {
         })
         .collect();
 
-
     let alpha = 0.05;
     let max_iterations = 2;
     let hidden_size = 50;
@@ -428,7 +436,7 @@ fn chapter11c() -> Result<(), std::io::Error> {
     );
     let mut weights_1_2 = Array::zeros((hidden_size, 1));
 
-    let mut layer_2_target= Array::zeros(negative+1);
+    let mut layer_2_target = Array::zeros(negative + 1);
     *layer_2_target.get_mut(0).unwrap() = 1.0;
 
     fn similar<'a>(
@@ -447,29 +455,36 @@ fn chapter11c() -> Result<(), std::io::Error> {
         return scores.into_iter().take(10).collect();
     }
 
-    //FROM HERE - to do loop
+    for rev_i in 0..input_dataset.len() * 2 {
+        let review = &input_dataset[rev_i % (input_dataset.len())];
+        for target_i in 0..review.len() {
+            let indexes =
+                Array::random_using(negative, Uniform::new(0, concatenated.len()), &mut rng)
+                    .to_vec();
+            let target_samples = [
+                vec![review[target_i]],
+                concatenated.select(Axis(0), &indexes).to_vec(),
+            ]
+            .concat();
 
-    let mut correct = 0;
-    let mut total = 0;
+            //println!("Review.len(): {}, target_i - window: {}, target_i: {}, window: {}", review.len(), target_i - window, target_i, window);
+            let left_context = &review[0.max(if window < target_i {target_i - window} else {0})..target_i];
+            let right_context = &review[target_i + 1..review.len().min(target_i + window)];
 
-    for iteration in 0..max_iterations {
-        for i in 0..(input_dataset.len() - 1000) {
-            let x = &input_dataset[i];
-            let y = target_dataset[i];
+            let full_context = [left_context, right_context].concat();
 
-            let layer_1 = sigmoid(
-                &weights_0_1
-                    .select(Axis(0), x)
-                    .sum_axis(Axis(0))
-                    .insert_axis(Axis(0)),
-            );
-            let layer_2 = sigmoid(&layer_1.dot(&weights_1_2));
+            let layer_1 = weights_0_1
+                .select(Axis(0), &full_context)
+                .mean_axis(Axis(0))
+                .unwrap()
+                .insert_axis(Axis(0));
+            let layer_2 = sigmoid(&layer_1.dot(&weights_1_2.select(Axis(0), &target_samples).t()));
 
-            let layer_2_delta = layer_2 - y;
-            let layer_1_delta = layer_2_delta.dot(&weights_1_2.t());
+            let layer_2_delta = layer_2 - &layer_2_target;
+            let layer_1_delta = layer_2_delta.dot(&weights_1_2.select(Axis(0), &target_samples));
 
-            for j in x {
-                let mut row = weights_0_1.row_mut(*j);
+            for j in full_context {
+                let mut row = weights_0_1.row_mut(j);
                 assert_eq!(layer_1_delta.dim().0, 1);
                 row -= &(layer_1_delta.row(0).to_owned() * alpha);
             }
@@ -477,57 +492,18 @@ fn chapter11c() -> Result<(), std::io::Error> {
             assert_eq!(layer_1.dim().0, 1);
             assert_eq!(layer_2_delta.dim().0, 1);
             weights_1_2 = weights_1_2 - (outer(&layer_1.row(0), &layer_2_delta.row(0)) * alpha);
+        }
 
-            assert_eq!(layer_2_delta.dim().1, 1);
-            if *layer_2_delta.abs().get((0, 0)).unwrap() < 0.5 {
-                correct += 1;
-            }
-            total += 1;
-
-            if i % 10 == 9 {
-                let progress =
-                    (i.to_f64().unwrap() / (input_dataset.len() - 1000).to_f64().unwrap()) * 100.0;
-                println!(
-                    "Iter: {}, Progress: {:.2}%, Training Accuracy: {:.3}, Correct: {}, Total: {}",
-                    iteration,
-                    progress,
-                    correct.to_f64().unwrap() / total.to_f64().unwrap(),
-                    correct,
-                    total
-                );
-            }
+        let progress = (rev_i.to_f64().unwrap()
+            / (input_dataset.len() * max_iterations).to_f64().unwrap())
+            * 100.0;
+        println!("Progress: {:.2}%", progress);
+        if rev_i % 250 == 0 {
+            println!("{:#?}", similar("terrible", &word2index, &weights_0_1));
         }
     }
 
-    correct = 0;
-    total = 0;
-
-    for i in (input_dataset.len() - 1000)..input_dataset.len() {
-        let x = &input_dataset[i];
-        let y = target_dataset[i];
-
-        let layer_1 = sigmoid(
-            &weights_0_1
-                .select(Axis(0), x)
-                .sum_axis(Axis(0))
-                .insert_axis(Axis(0)),
-        );
-        let layer_2 = sigmoid(&layer_1.dot(&weights_1_2));
-
-        let layer_2_delta = layer_2 - y;
-
-        assert_eq!(layer_2_delta.dim().0, 1);
-        assert_eq!(layer_2_delta.dim().1, 1);
-        if *layer_2_delta.abs().get((0, 0)).unwrap() < 0.5 {
-            correct += 1;
-        }
-        total += 1;
-    }
-
-    println!(
-        "Test Accuracy: {:.3}",
-        correct.to_f64().unwrap() / total.to_f64().unwrap()
-    );
+    println!("{:#?}", similar("terrible", &word2index, &weights_0_1));
 
     Ok(())
 }
