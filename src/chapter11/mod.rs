@@ -350,10 +350,6 @@ fn chapter11c() -> Result<(), std::io::Error> {
         .unwrap()
         .flatten()
         .collect();
-    let raw_labels: Vec<String> = read_lines(Path::new(BASE_PATH).join(FILE_LABELS))
-        .unwrap()
-        .flatten()
-        .collect();
 
     let tokens: Vec<HashSet<&str>> = raw_reviews
         .iter()
@@ -372,7 +368,7 @@ fn chapter11c() -> Result<(), std::io::Error> {
     }
     let mut _wordcnt: Vec<(&str, isize)> = wordcnt.into_iter().collect();
     _wordcnt.sort_by(|(_, a), (_, b)| b.cmp(a));
-    let wordcnt = _wordcnt;
+    let wordcnt: Vec<(&str, isize)> = _wordcnt.into_iter().collect();
 
     let vocab: Vec<&str> = wordcnt
         .into_iter()
@@ -411,17 +407,6 @@ fn chapter11c() -> Result<(), std::io::Error> {
 
     let mut rng = ChaCha8Rng::seed_from_u64(1);
     input_dataset.shuffle(&mut rng);
-
-    let target_dataset: Vec<f64> = raw_labels
-        .into_iter()
-        .map(|label| {
-            if label == "positive" {
-                return 1.0;
-            } else {
-                return 0.0;
-            }
-        })
-        .collect();
 
     let alpha = 0.05;
     let max_iterations = 2;
@@ -467,8 +452,11 @@ fn chapter11c() -> Result<(), std::io::Error> {
             ]
             .concat();
 
-            //println!("Review.len(): {}, target_i - window: {}, target_i: {}, window: {}", review.len(), target_i - window, target_i, window);
-            let left_context = &review[0.max(if window < target_i {target_i - window} else {0})..target_i];
+            let left_context = &review[0.max(if window < target_i {
+                target_i - window
+            } else {
+                0
+            })..target_i];
             let right_context = &review[target_i + 1..review.len().min(target_i + window)];
 
             let full_context = [left_context, right_context].concat();
@@ -484,7 +472,8 @@ fn chapter11c() -> Result<(), std::io::Error> {
             let layer_2_delta = layer_2 - &layer_2_target;
             let layer_1_delta = layer_2_delta.dot(&weights_1_2.select(Axis(0), &target_samples));
 
-            for j in full_context {
+            for i in 0..full_context.len() {
+                let j = full_context[i];
                 let mut row = weights_0_1.row_mut(j);
                 assert_eq!(layer_1_delta.dim().0, 1);
                 row -= &(layer_1_delta.row(0).to_owned() * alpha);
@@ -511,6 +500,7 @@ fn chapter11c() -> Result<(), std::io::Error> {
     }
 
     println!("{:#?}", similar("terrible", &word2index, &weights_0_1));
+    println!("{:#?}", similar("beautiful", &word2index, &weights_0_1));
 
     Ok(())
 }
