@@ -434,7 +434,7 @@ fn chapter11c() -> Result<(), std::io::Error> {
         Uniform::new(-0.1, 0.1),
         &mut rng,
     );
-    let mut weights_1_2 = Array::zeros((hidden_size, 1));
+    let mut weights_1_2 = Array::zeros(((&vocab).len(), hidden_size));
 
     let mut layer_2_target = Array::zeros(negative + 1);
     *layer_2_target.get_mut(0).unwrap() = 1.0;
@@ -478,6 +478,7 @@ fn chapter11c() -> Result<(), std::io::Error> {
                 .mean_axis(Axis(0))
                 .unwrap()
                 .insert_axis(Axis(0));
+
             let layer_2 = sigmoid(&layer_1.dot(&weights_1_2.select(Axis(0), &target_samples).t()));
 
             let layer_2_delta = layer_2 - &layer_2_target;
@@ -491,7 +492,13 @@ fn chapter11c() -> Result<(), std::io::Error> {
 
             assert_eq!(layer_1.dim().0, 1);
             assert_eq!(layer_2_delta.dim().0, 1);
-            weights_1_2 = weights_1_2 - (outer(&layer_1.row(0), &layer_2_delta.row(0)) * alpha);
+            let weights_1_2_delta = outer( &layer_2_delta.row(0), &layer_1.row(0)) * alpha;
+            for i in 0..target_samples.len() {
+                let j = target_samples[i];
+                let mut row = weights_1_2.row_mut(j);
+                row -= &weights_1_2_delta.row(i);
+            }
+
         }
 
         let progress = (rev_i.to_f64().unwrap()
