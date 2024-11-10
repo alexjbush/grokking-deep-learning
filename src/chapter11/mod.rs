@@ -4,7 +4,7 @@ use std::path::Path;
 
 use crate::{Activity, Chapter};
 use ndarray::{Array, ArrayBase, Axis, Data, Dim, Dimension, Ix1, Ix2, NdFloat, OwnedRepr};
-const ACTIVITIES: [Activity; 3] = [CHAPTER11A, CHAPTER11B, CHAPTER11C];
+const ACTIVITIES: [Activity; 4] = [CHAPTER11A, CHAPTER11B, CHAPTER11C, CHAPTER11D];
 use ndarray_rand::rand::seq::SliceRandom;
 use ndarray_rand::rand_distr::num_traits::ToPrimitive;
 use ndarray_rand::{rand::SeedableRng, rand_distr::Uniform, RandomExt};
@@ -44,10 +44,15 @@ const CHAPTER11C: Activity = Activity {
     id: "11c",
 };
 
-fn sigmoid<D> (
-    m: &ArrayBase<OwnedRepr<f64>, D>,
-) -> ArrayBase<OwnedRepr<f64>, D> 
-where D: Dimension
+const CHAPTER11D: Activity = Activity {
+    task: chapter11d,
+    name: "Word analogies",
+    id: "11d",
+};
+
+fn sigmoid<D>(m: &ArrayBase<OwnedRepr<f64>, D>) -> ArrayBase<OwnedRepr<f64>, D>
+where
+    D: Dimension,
 {
     m.map(|v| return 1.0 / (1.0 + (-1.0 * v).exp()))
 }
@@ -149,10 +154,7 @@ fn chapter11a() -> Result<(), std::io::Error> {
             let y = target_dataset[i];
 
             let layer_1 = sigmoid(
-                &weights_0_1
-                    .select(Axis(0), x)
-                    .sum_axis(Axis(0))
-                    // .insert_axis(Axis(0)),
+                &weights_0_1.select(Axis(0), x).sum_axis(Axis(0)), // .insert_axis(Axis(0)),
             );
             let layer_2 = sigmoid(&layer_1.dot(&weights_1_2));
 
@@ -198,10 +200,7 @@ fn chapter11a() -> Result<(), std::io::Error> {
         let y = target_dataset[i];
 
         let layer_1 = sigmoid(
-            &weights_0_1
-                .select(Axis(0), x)
-                .sum_axis(Axis(0))
-                // .insert_axis(Axis(0)),
+            &weights_0_1.select(Axis(0), x).sum_axis(Axis(0)), // .insert_axis(Axis(0)),
         );
         let layer_2 = sigmoid(&layer_1.dot(&weights_1_2));
 
@@ -297,11 +296,7 @@ fn chapter11b() -> Result<(), std::io::Error> {
             let x = &input_dataset[i];
             let y = target_dataset[i];
 
-            let layer_1 = sigmoid(
-                &weights_0_1
-                    .select(Axis(0), x)
-                    .sum_axis(Axis(0))
-            );
+            let layer_1 = sigmoid(&weights_0_1.select(Axis(0), x).sum_axis(Axis(0)));
             let layer_2 = sigmoid(&layer_1.dot(&weights_1_2));
 
             let layer_2_delta = layer_2 - y;
@@ -316,7 +311,6 @@ fn chapter11b() -> Result<(), std::io::Error> {
             assert_eq!(layer_1.dim(), 1);
             assert_eq!(layer_2_delta.dim(), 1);
             weights_1_2 = weights_1_2 - (outer(&layer_1, &layer_2_delta) * alpha);
-
         }
     }
 
@@ -419,7 +413,8 @@ fn chapter11c() -> Result<(), std::io::Error> {
         Uniform::new(-0.1, 0.1),
         &mut rng,
     );
-    let mut weights_1_2 = Array::zeros(((&vocab).len(), hidden_size));
+    let mut weights_1_2: ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>> =
+        Array::zeros(((&vocab).len(), hidden_size));
 
     let mut layer_2_target = Array::zeros(negative + 1);
     *layer_2_target.get_mut(0).unwrap() = 1.0;
@@ -443,7 +438,6 @@ fn chapter11c() -> Result<(), std::io::Error> {
     for rev_i in 0..(input_dataset.len() * max_iterations) {
         let review = &input_dataset[rev_i % (input_dataset.len())];
         for target_i in 0..((*review).len()) {
-            
             let indexes =
                 Array::random_using(negative, Uniform::new(0, concatenated.len()), &mut rng)
                     .to_vec();
@@ -475,12 +469,9 @@ fn chapter11c() -> Result<(), std::io::Error> {
             for i in 0..full_context.len() {
                 let j = full_context[i];
                 let mut row = weights_0_1.row_mut(j);
-                assert_eq!(layer_1_delta.dim(), 1);
                 row -= &((layer_1_delta).to_owned() * alpha);
             }
 
-            assert_eq!(layer_1.dim(), 1);
-            assert_eq!(layer_2_delta.dim(), 1);
             let weights_1_2_delta = outer(&layer_2_delta, &layer_1) * alpha;
             for i in 0..target_samples.len() {
                 let j = target_samples[i];
@@ -500,6 +491,180 @@ fn chapter11c() -> Result<(), std::io::Error> {
 
     println!("{:#?}", similar("terrible", &word2index, &weights_0_1));
     println!("{:#?}", similar("beautiful", &word2index, &weights_0_1));
+
+    Ok(())
+}
+
+fn chapter11d() -> Result<(), std::io::Error> {
+    download_files(GROKKING_BASE_URL, BASE_PATH, FILES_TO_DOWNLOAD).unwrap();
+
+    let raw_reviews: Vec<String> = read_lines(Path::new(BASE_PATH).join(FILE_REVIEWS))
+        .unwrap()
+        .flatten()
+        .collect();
+
+    let tokens: Vec<Vec<&str>> = raw_reviews
+        .iter()
+        .map(|s| s.split(' ').collect::<Vec<&str>>())
+        .collect();
+
+    let mut wordcnt: HashMap<&str, isize> = HashMap::new();
+    for sent in &tokens {
+        for word in sent {
+            if let Some(x) = wordcnt.get_mut(word) {
+                *x -= 1;
+            } else {
+                wordcnt.insert(word, -1);
+            }
+        }
+    }
+    let mut _wordcnt: Vec<(&str, isize)> = wordcnt.into_iter().collect();
+    _wordcnt.sort_by(|(_, a), (_, b)| b.cmp(a));
+    let wordcnt: Vec<(&str, isize)> = _wordcnt.into_iter().collect();
+
+    let vocab: Vec<&str> = wordcnt
+        .into_iter()
+        .map(|(word, _)| word)
+        .collect::<HashSet<&str>>()
+        .into_iter()
+        .collect();
+
+    let word2index: HashMap<&str, usize> = (&vocab)
+        .into_iter()
+        .enumerate()
+        .map(|f| (*f.1, f.0))
+        .collect();
+
+    let mut concatenated: Vec<usize> = vec![];
+    let mut input_dataset: Vec<Vec<usize>> = vec![];
+    for sent in &tokens {
+        let mut sent_indices: Vec<usize> = vec![];
+        for word in sent {
+            let idx = word2index.get(word);
+            if let Some(i) = idx {
+                sent_indices.push(*i);
+                concatenated.push(*i);
+            }
+        }
+        input_dataset.push(
+            sent_indices
+                .into_iter()
+                .collect::<HashSet<usize>>()
+                .into_iter()
+                .collect(),
+        )
+    }
+
+    let concatenated = Array::from_vec(concatenated);
+
+    let mut rng = ChaCha8Rng::seed_from_u64(1);
+    input_dataset.shuffle(&mut rng);
+
+    let alpha = 0.05;
+    let max_iterations = 2;
+    let hidden_size = 50;
+    let window = 2;
+    let negative = 5;
+
+    let mut weights_0_1 = Array::random_using(
+        ((&vocab).len(), hidden_size),
+        Uniform::new(-0.1, 0.1),
+        &mut rng,
+    );
+    let mut weights_1_2 = Array::zeros(((&vocab).len(), hidden_size));
+
+    let mut layer_2_target = Array::zeros(negative + 1);
+    *layer_2_target.get_mut(0).unwrap() = 1.0;
+
+    for rev_i in 0..(input_dataset.len() * max_iterations) {
+        let review = &input_dataset[rev_i % (input_dataset.len())];
+        for target_i in 0..((*review).len()) {
+            let indexes =
+                Array::random_using(negative, Uniform::new(0, concatenated.len()), &mut rng)
+                    .to_vec();
+            let target_samples = [
+                vec![review[target_i]],
+                concatenated.select(Axis(0), &indexes).to_vec(),
+            ]
+            .concat();
+
+            let left_context = &review[0.max(if window < target_i {
+                target_i - window
+            } else {
+                0
+            })..target_i];
+            let right_context = &review[target_i + 1..review.len().min(target_i + window)];
+
+            let full_context = [left_context, right_context].concat();
+
+            let layer_1 = weights_0_1
+                .select(Axis(0), &full_context)
+                .mean_axis(Axis(0))
+                .unwrap();
+
+            let layer_2 = sigmoid(&layer_1.dot(&weights_1_2.select(Axis(0), &target_samples).t()));
+
+            let layer_2_delta = layer_2 - &layer_2_target;
+            let layer_1_delta = layer_2_delta.dot(&weights_1_2.select(Axis(0), &target_samples));
+
+            for i in 0..full_context.len() {
+                let j = full_context[i];
+                let mut row = weights_0_1.row_mut(j);
+                row -= &((layer_1_delta).to_owned() * alpha);
+            }
+
+            let weights_1_2_delta = outer(&layer_2_delta, &layer_1) * alpha;
+            for i in 0..target_samples.len() {
+                let j = target_samples[i];
+                let mut row = weights_1_2.row_mut(j);
+                row -= &weights_1_2_delta.row(i);
+            }
+        }
+    }
+
+    fn analogy<'a>(
+        positive: Vec<&str>,
+        negative: Vec<&str>,
+        word2index: &HashMap<&'a str, usize>,
+        weights_0_1: &ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>>,
+    ) -> Vec<(&'a str, f64)> {
+        let _norms = (weights_0_1 * weights_0_1).sum_axis(Axis(1));
+        let norms = _norms.to_shape((_norms.dim(), 1)).unwrap();
+
+        let normed_weights = weights_0_1 * norms;
+
+        let mut query_vec: ArrayBase<OwnedRepr<f64>, Dim<[usize; 1]>> =
+            Array::zeros(weights_0_1.dim().1);
+        for word in positive {
+            query_vec += &normed_weights.row(word2index[word]);
+        }
+        for word in negative {
+            query_vec -= &normed_weights.row(word2index[word]);
+        }
+
+        let mut scores: Vec<(&str, f64)> = vec![];
+        for (word, index) in word2index.iter() {
+            let raw_difference = &weights_0_1.row(*index) - &query_vec;
+            let squared_difference = &raw_difference * &raw_difference;
+            scores.push((*word, -1.0 * (squared_difference.sum().sqrt())));
+        }
+        scores.sort_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap());
+
+        return scores.into_iter().skip(1).take(10).collect();
+    }
+
+    println!(
+        "{:#?}",
+        analogy(vec!["terrible", "good"], vec!["bad"], &word2index, &weights_0_1)
+    );
+    println!(
+        "{:#?}",
+        analogy(vec!["elizabeth", "he"], vec!["she"], &word2index, &weights_0_1)
+    );
+    println!(
+        "{:#?}",
+        analogy(vec!["king", "woman"], vec!["man"], &word2index, &weights_0_1)
+    );
 
     Ok(())
 }
