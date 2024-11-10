@@ -172,7 +172,7 @@ fn chapter11a() -> Result<(), std::io::Error> {
             weights_1_2 = weights_1_2 - (outer(&layer_1, &layer_2_delta) * alpha);
 
             // assert_eq!(layer_2_delta.dim().1, 1);
-            if *layer_2_delta.abs().get((0)).unwrap() < 0.5 {
+            if *layer_2_delta.abs().get(0).unwrap() < 0.5 {
                 correct += 1;
             }
             total += 1;
@@ -319,10 +319,10 @@ fn chapter11b() -> Result<(), std::io::Error> {
         word2index: &HashMap<&'a str, usize>,
         weights_0_1: &ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>>,
     ) -> Vec<(&'a str, f64)> {
-        let target_index = word2index[target];
+        let target_index = word2index.get(target).unwrap();
         let mut scores: Vec<(&str, f64)> = vec![];
         for (word, index) in word2index.iter() {
-            let raw_difference = &weights_0_1.row(*index) - &weights_0_1.row(target_index);
+            let raw_difference = &weights_0_1.row(*index) - &weights_0_1.row(*target_index);
             let squared_difference = &raw_difference * &raw_difference;
             scores.push((*word, -1.0 * (squared_difference.sum().sqrt())));
         }
@@ -364,6 +364,14 @@ fn chapter11c() -> Result<(), std::io::Error> {
     _wordcnt.sort_by(|(_, a), (_, b)| b.cmp(a));
     let wordcnt: Vec<(&str, isize)> = _wordcnt.into_iter().collect();
 
+    println!(
+        "Word {:?}",
+        (&wordcnt)
+            .into_iter()
+            .take(10)
+            .collect::<Vec<&(&str, isize)>>()
+    );
+
     let vocab: Vec<&str> = wordcnt
         .into_iter()
         .map(|(word, _)| word)
@@ -391,7 +399,7 @@ fn chapter11c() -> Result<(), std::io::Error> {
         input_dataset.push(
             sent_indices
                 .into_iter()
-                .collect::<HashSet<usize>>()
+                .collect::<Vec<usize>>()
                 .into_iter()
                 .collect(),
         )
@@ -424,10 +432,10 @@ fn chapter11c() -> Result<(), std::io::Error> {
         word2index: &HashMap<&'a str, usize>,
         weights_0_1: &ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>>,
     ) -> Vec<(&'a str, f64)> {
-        let target_index = word2index[target];
+        let target_index = word2index.get(target).unwrap();
         let mut scores: Vec<(&str, f64)> = vec![];
         for (word, index) in word2index.iter() {
-            let raw_difference = &weights_0_1.row(*index) - &weights_0_1.row(target_index);
+            let raw_difference = &weights_0_1.row(*index) - &weights_0_1.row(*target_index);
             let squared_difference = &raw_difference * &raw_difference;
             scores.push((*word, -1.0 * (squared_difference.sum().sqrt())));
         }
@@ -549,7 +557,7 @@ fn chapter11d() -> Result<(), std::io::Error> {
         input_dataset.push(
             sent_indices
                 .into_iter()
-                .collect::<HashSet<usize>>()
+                .collect::<Vec<usize>>()
                 .into_iter()
                 .collect(),
         )
@@ -636,10 +644,10 @@ fn chapter11d() -> Result<(), std::io::Error> {
         let mut query_vec: ArrayBase<OwnedRepr<f64>, Dim<[usize; 1]>> =
             Array::zeros(weights_0_1.dim().1);
         for word in positive {
-            query_vec += &normed_weights.row(word2index[word]);
+            query_vec += &normed_weights.row(*word2index.get(word).unwrap());
         }
         for word in negative {
-            query_vec -= &normed_weights.row(word2index[word]);
+            query_vec -= &normed_weights.row(*word2index.get(word).unwrap());
         }
 
         let mut scores: Vec<(&str, f64)> = vec![];
@@ -654,16 +662,37 @@ fn chapter11d() -> Result<(), std::io::Error> {
     }
 
     println!(
-        "{:#?}",
-        analogy(vec!["terrible", "good"], vec!["bad"], &word2index, &weights_0_1)
+        "Positive: {:?}, Negative: {:?}\n{:#?}",
+        vec!["terrible", "good"],
+        vec!["bad"],
+        analogy(
+            vec!["terrible", "good"],
+            vec!["bad"],
+            &word2index,
+            &weights_0_1
+        )
     );
     println!(
-        "{:#?}",
-        analogy(vec!["elizabeth", "he"], vec!["she"], &word2index, &weights_0_1)
+        "Positive: {:?}, Negative: {:?}\n{:#?}",
+        vec!["elizabeth", "he"],
+        vec!["she"],
+        analogy(
+            vec!["elizabeth", "he"],
+            vec!["she"],
+            &word2index,
+            &weights_0_1
+        )
     );
     println!(
-        "{:#?}",
-        analogy(vec!["king", "woman"], vec!["man"], &word2index, &weights_0_1)
+        "Positive: {:?}, Negative: {:?}\n{:#?}",
+        vec!["king", "woman"],
+        vec!["man"],
+        analogy(
+            vec!["king", "woman"],
+            vec!["man"],
+            &word2index,
+            &weights_0_1
+        )
     );
 
     Ok(())
