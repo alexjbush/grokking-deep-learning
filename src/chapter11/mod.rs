@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use crate::{Activity, Chapter};
-use ndarray::{Array, ArrayBase, Axis, Data, Dim, Ix1, Ix2, NdFloat, OwnedRepr};
+use ndarray::{Array, ArrayBase, Axis, Data, Dim, Dimension, Ix1, Ix2, NdFloat, OwnedRepr};
 const ACTIVITIES: [Activity; 3] = [CHAPTER11A, CHAPTER11B, CHAPTER11C];
 use ndarray_rand::rand::seq::SliceRandom;
 use ndarray_rand::rand_distr::num_traits::ToPrimitive;
@@ -44,9 +44,11 @@ const CHAPTER11C: Activity = Activity {
     id: "11c",
 };
 
-fn sigmoid(
-    m: &ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>>,
-) -> ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>> {
+fn sigmoid<D> (
+    m: &ArrayBase<OwnedRepr<f64>, D>,
+) -> ArrayBase<OwnedRepr<f64>, D> 
+where D: Dimension
+{
     m.map(|v| return 1.0 / (1.0 + (-1.0 * v).exp()))
 }
 
@@ -150,7 +152,7 @@ fn chapter11a() -> Result<(), std::io::Error> {
                 &weights_0_1
                     .select(Axis(0), x)
                     .sum_axis(Axis(0))
-                    .insert_axis(Axis(0)),
+                    // .insert_axis(Axis(0)),
             );
             let layer_2 = sigmoid(&layer_1.dot(&weights_1_2));
 
@@ -159,16 +161,16 @@ fn chapter11a() -> Result<(), std::io::Error> {
 
             for j in x {
                 let mut row = weights_0_1.row_mut(*j);
-                assert_eq!(layer_1_delta.dim().0, 1);
-                row -= &(layer_1_delta.row(0).to_owned() * alpha);
+                // assert_eq!(layer_1_delta.dim().0, 1);
+                row -= &(layer_1_delta.to_owned() * alpha);
             }
 
-            assert_eq!(layer_1.dim().0, 1);
-            assert_eq!(layer_2_delta.dim().0, 1);
-            weights_1_2 = weights_1_2 - (outer(&layer_1.row(0), &layer_2_delta.row(0)) * alpha);
+            // assert_eq!(layer_1.dim().0, 1);
+            // assert_eq!(layer_2_delta.dim().0, 1);
+            weights_1_2 = weights_1_2 - (outer(&layer_1, &layer_2_delta) * alpha);
 
-            assert_eq!(layer_2_delta.dim().1, 1);
-            if *layer_2_delta.abs().get((0, 0)).unwrap() < 0.5 {
+            // assert_eq!(layer_2_delta.dim().1, 1);
+            if *layer_2_delta.abs().get((0)).unwrap() < 0.5 {
                 correct += 1;
             }
             total += 1;
@@ -199,15 +201,15 @@ fn chapter11a() -> Result<(), std::io::Error> {
             &weights_0_1
                 .select(Axis(0), x)
                 .sum_axis(Axis(0))
-                .insert_axis(Axis(0)),
+                // .insert_axis(Axis(0)),
         );
         let layer_2 = sigmoid(&layer_1.dot(&weights_1_2));
 
         let layer_2_delta = layer_2 - y;
 
-        assert_eq!(layer_2_delta.dim().0, 1);
-        assert_eq!(layer_2_delta.dim().1, 1);
-        if *layer_2_delta.abs().get((0, 0)).unwrap() < 0.5 {
+        assert_eq!(layer_2_delta.dim(), 1);
+        // assert_eq!(layer_2_delta.dim().1, 1);
+        if *(layer_2_delta.abs().get(0).unwrap()) < 0.5 {
             correct += 1;
         }
         total += 1;
@@ -299,7 +301,6 @@ fn chapter11b() -> Result<(), std::io::Error> {
                 &weights_0_1
                     .select(Axis(0), x)
                     .sum_axis(Axis(0))
-                    .insert_axis(Axis(0)),
             );
             let layer_2 = sigmoid(&layer_1.dot(&weights_1_2));
 
@@ -308,15 +309,14 @@ fn chapter11b() -> Result<(), std::io::Error> {
 
             for j in x {
                 let mut row = weights_0_1.row_mut(*j);
-                assert_eq!(layer_1_delta.dim().0, 1);
-                row -= &(layer_1_delta.row(0).to_owned() * alpha);
+                assert_eq!(layer_1_delta.dim(), 1);
+                row -= &(layer_1_delta.to_owned() * alpha);
             }
 
-            assert_eq!(layer_1.dim().0, 1);
-            assert_eq!(layer_2_delta.dim().0, 1);
-            weights_1_2 = weights_1_2 - (outer(&layer_1.row(0), &layer_2_delta.row(0)) * alpha);
+            assert_eq!(layer_1.dim(), 1);
+            assert_eq!(layer_2_delta.dim(), 1);
+            weights_1_2 = weights_1_2 - (outer(&layer_1, &layer_2_delta) * alpha);
 
-            assert_eq!(layer_2_delta.dim().1, 1);
         }
     }
 
@@ -351,9 +351,9 @@ fn chapter11c() -> Result<(), std::io::Error> {
         .flatten()
         .collect();
 
-    let tokens: Vec<HashSet<&str>> = raw_reviews
+    let tokens: Vec<Vec<&str>> = raw_reviews
         .iter()
-        .map(|s| s.split_whitespace().collect::<HashSet<&str>>())
+        .map(|s| s.split(' ').collect::<Vec<&str>>())
         .collect();
 
     let mut wordcnt: HashMap<&str, isize> = HashMap::new();
@@ -440,9 +440,10 @@ fn chapter11c() -> Result<(), std::io::Error> {
         return scores.into_iter().take(10).collect();
     }
 
-    for rev_i in 0..input_dataset.len() * 2 {
+    for rev_i in 0..(input_dataset.len() * max_iterations) {
         let review = &input_dataset[rev_i % (input_dataset.len())];
-        for target_i in 0..review.len() {
+        for target_i in 0..((*review).len()) {
+            
             let indexes =
                 Array::random_using(negative, Uniform::new(0, concatenated.len()), &mut rng)
                     .to_vec();
@@ -464,8 +465,7 @@ fn chapter11c() -> Result<(), std::io::Error> {
             let layer_1 = weights_0_1
                 .select(Axis(0), &full_context)
                 .mean_axis(Axis(0))
-                .unwrap()
-                .insert_axis(Axis(0));
+                .unwrap();
 
             let layer_2 = sigmoid(&layer_1.dot(&weights_1_2.select(Axis(0), &target_samples).t()));
 
@@ -475,26 +475,25 @@ fn chapter11c() -> Result<(), std::io::Error> {
             for i in 0..full_context.len() {
                 let j = full_context[i];
                 let mut row = weights_0_1.row_mut(j);
-                assert_eq!(layer_1_delta.dim().0, 1);
-                row -= &(layer_1_delta.row(0).to_owned() * alpha);
+                assert_eq!(layer_1_delta.dim(), 1);
+                row -= &((layer_1_delta).to_owned() * alpha);
             }
 
-            assert_eq!(layer_1.dim().0, 1);
-            assert_eq!(layer_2_delta.dim().0, 1);
-            let weights_1_2_delta = outer( &layer_2_delta.row(0), &layer_1.row(0)) * alpha;
+            assert_eq!(layer_1.dim(), 1);
+            assert_eq!(layer_2_delta.dim(), 1);
+            let weights_1_2_delta = outer(&layer_2_delta, &layer_1) * alpha;
             for i in 0..target_samples.len() {
                 let j = target_samples[i];
                 let mut row = weights_1_2.row_mut(j);
                 row -= &weights_1_2_delta.row(i);
             }
-
         }
 
-        let progress = (rev_i.to_f64().unwrap()
-            / (input_dataset.len() * max_iterations).to_f64().unwrap())
-            * 100.0;
-        println!("Progress: {:.2}%", progress);
-        if rev_i % 250 == 0 {
+        if rev_i % 1000 == 0 {
+            let progress = (rev_i.to_f64().unwrap()
+                / (input_dataset.len() * max_iterations).to_f64().unwrap())
+                * 100.0;
+            println!("Progress: {:.2}%, i: {}", progress, rev_i);
             println!("{:#?}", similar("terrible", &word2index, &weights_0_1));
         }
     }
