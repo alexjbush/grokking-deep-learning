@@ -1,5 +1,6 @@
 use chapter10::CHAPTER as CHAPTER10;
 use chapter11::CHAPTER as CHAPTER11;
+use chapter12::CHAPTER as CHAPTER12;
 use chapter3::CHAPTER as CHAPTER3;
 use chapter4::CHAPTER as CHAPTER4;
 use chapter5::CHAPTER as CHAPTER5;
@@ -10,6 +11,7 @@ use std::io;
 
 mod chapter10;
 mod chapter11;
+mod chapter12;
 mod chapter3;
 mod chapter4;
 mod chapter5;
@@ -31,6 +33,6 @@ pub struct Chapter {
     pub id: &'static str,
 }
 
-pub const CHAPTERS: [Chapter; 8] = [
-    CHAPTER3, CHAPTER4, CHAPTER5, CHAPTER6, CHAPTER8, CHAPTER9, CHAPTER10, CHAPTER11,
+pub const CHAPTERS: [Chapter; 9] = [
+    CHAPTER3, CHAPTER4, CHAPTER5, CHAPTER6, CHAPTER8, CHAPTER9, CHAPTER10, CHAPTER11, CHAPTER12,
 ];
