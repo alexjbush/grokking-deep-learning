@@ -243,6 +243,8 @@ fn chapter12a() -> Result<(), std::io::Error> {
             reviews2vector.dot(&v).into_iter().enumerate().collect();
         _scores_most_common.sort_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap());
 
+        println!("{:?}", &_scores_most_common[0..5]);
+
         return _scores_most_common
             .into_iter()
             .map(|(idx, _)| idx)
@@ -300,8 +302,9 @@ fn chapter12b() -> Result<(), std::io::Error> {
         .collect();
 
     let vocab = tokens
-        .into_iter()
+        .iter()
         .flat_map(|sent| sent)
+        .map(|v| *v)
         .collect::<HashSet<&str>>()
         .into_iter()
         .collect::<Vec<&str>>();
@@ -322,7 +325,7 @@ fn chapter12b() -> Result<(), std::io::Error> {
 
     let mut recurrent: Array2<f64> = Array::eye(embed_size);
 
-    let start: Array1<f64> = Array::zeros(embed_size);
+    let mut start: Array1<f64> = Array::zeros(embed_size);
 
     let mut decoder = Array::random_using(
         (embed_size, (&vocab).len()),
@@ -339,27 +342,120 @@ fn chapter12b() -> Result<(), std::io::Error> {
         recurrent: &Array2<f64>,
         embed: &Array2<f64>,
     ) -> (Vec<HashMap<&'static str, Array1<f64>>>, f64) {
-
-        let mut layers: Vec<HashMap<&str, Array1<f64>>> = vec![ HashMap::from([("hidden", start.to_owned())]) ];
+        let mut layers: Vec<HashMap<&str, Array1<f64>>> =
+            vec![HashMap::from([("hidden", start.to_owned())])];
 
         let mut loss = 0.0;
 
         for target_i in 0..sent.len() {
-
             let mut layer: HashMap<&str, Array1<f64>> = HashMap::new();
-            layer.insert("pred", softmax(&layers.last().unwrap()["hidden"].dot(decoder)));
+            layer.insert(
+                "pred",
+                softmax(&layers.last().unwrap()["hidden"].dot(decoder)),
+            );
 
+            loss += -(layer["pred"].get(sent[target_i]).unwrap()).ln();
 
-            loss -= (layer["pred"].get(sent[target_i]).unwrap()).log10();
-
-            layer.insert("hidden", &layers.last().unwrap()["hidden"].dot(recurrent) + &embed.row(sent[target_i]));
+            layer.insert(
+                "hidden",
+                &layers.last().unwrap()["hidden"].dot(recurrent) + &embed.row(sent[target_i]),
+            );
 
             layers.push(layer);
-
         }
 
         return (layers, loss);
     }
 
-    todo!()
+    for iter in 0..30000 {
+        let alpha = 0.001;
+        let sent = words2indices(&tokens[iter % tokens.len()][1..].to_vec(), &word2index);
+        let (mut layers, loss) = predict(&sent, &start, &decoder, &recurrent, &embed);
+
+        for layer_idx in (0..layers.len()).rev() {
+            let layers_len = layers.len();
+            let layer = layers.get(layer_idx).unwrap();
+            let mut new_layer: HashMap<&str, Array1<f64>> = HashMap::new();
+            let send_idx = (if layer_idx == 0 {
+                sent.len()
+            } else {
+                layer_idx
+            }) - 1;
+            // let target = sent[layer_idx - 1];
+            let target = sent[send_idx];
+
+            if layer_idx > 0 {
+                let output_delta = &layer["pred"] - &one_hot.row(target);
+                let new_hidden_delta = output_delta.dot(&decoder.t());
+
+                if layer_idx == layers_len - 1 {
+                    new_layer.insert("hidden_delta", new_hidden_delta);
+                } else {
+                    let _d = &layers
+                        .get(layer_idx + 1)
+                        .unwrap()
+                        .get("hidden_delta")
+                        .unwrap()
+                        .dot(&recurrent.t());
+                    new_layer.insert("hidden_delta", new_hidden_delta + _d);
+                }
+                new_layer.insert("output_delta", output_delta);
+            } else {
+                let _d = layers
+                    .get(layer_idx + 1)
+                    .unwrap()
+                    .get("hidden_delta")
+                    .unwrap()
+                    .dot(&recurrent.t());
+                new_layer.insert("hidden_delta", _d);
+            }
+            let layer_mut = layers.get_mut(layer_idx).unwrap();
+            new_layer.iter().for_each(|(k, v)| {
+                layer_mut.insert(*k, v.to_owned());
+            });
+        }
+
+        start -= &(&layers[0]["hidden_delta"] * (alpha / sent.len() as f64));
+        for (layer_idx, layer) in (&layers[1..]).iter().enumerate() {
+            decoder -= &(outer(&(&layers[layer_idx]["hidden"]), &layer["output_delta"])
+                * (alpha / sent.len() as f64));
+
+            let embed_idx = sent[layer_idx];
+            let mut row = embed.row_mut(embed_idx);
+            row -= &(&layers[layer_idx]["hidden_delta"] * (alpha / sent.len() as f64));
+
+            recurrent -= &(outer(&(&layers[layer_idx]["hidden"]), &layer["hidden_delta"])
+                * (alpha / sent.len() as f64));
+        }
+
+        if iter % 1000 == 0 {
+            println!("Perplexity: {:.3}", (loss / (sent.len() as f64)).exp());
+        }
+    }
+
+    let send_index = 4;
+    let (l, _) = predict(
+        &words2indices(&tokens[send_index], &word2index),
+        &start,
+        &decoder,
+        &recurrent,
+        &embed,
+    );
+
+    println!("{:?}", tokens[send_index]);
+
+    for (i, each_layer) in l[1..l.len() - 1].iter().enumerate() {
+        let input = tokens[send_index][i];
+        let true_v = tokens[send_index][i + 1];
+        let pred = vocab[each_layer["pred"].argmax().unwrap()];
+        println!(
+            "Prev Input: {:?}{}True: {:?}{}Pred: {:?}",
+            input,
+            " ".repeat(12 - input.len()),
+            true_v,
+            " ".repeat(15 - true_v.len()),
+            pred,
+        );
+    }
+    Ok(())
 }
