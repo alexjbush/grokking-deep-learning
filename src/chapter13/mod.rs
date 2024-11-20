@@ -14,13 +14,13 @@ const ACTIVITIES: [Activity; 0] = [];
 trait Operation: 'static {}
 
 struct Add();
-
 impl Operation for Add {}
+const ADD: Add = Add();
 
 pub struct Tensor<'a, T> {
     data: ArrayD<T>,
     creators: Vec<&'a Tensor<'a, T>>,
-    creation_op: Option<Box<dyn Operation>>,
+    creation_op: Option<&'static dyn Operation>,
 }
 
 impl<'a, T> Tensor<'a, T> {
@@ -35,7 +35,7 @@ impl<'a, T> Tensor<'a, T> {
     fn new_with_creators(
         data: ArrayD<T>,
         creators: Vec<&'a Tensor<'a, T>>,
-        creation_op: Option<Box<dyn Operation>>,
+        creation_op: Option<&'static dyn Operation>,
     ) -> Tensor<'a, T> {
         Tensor {
             data,
@@ -59,7 +59,7 @@ where
         Tensor::<T>::new_with_creators(
             self.get_data() + _rhs.get_data(),
             vec![self, _rhs],
-            Some(Box::new(Add())),
+            Some(&ADD),
         )
     }
 }
