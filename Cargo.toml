@@ -16,6 +16,15 @@ log = "0.4"
 curl = "0.4"
 pbr = "1.0"
 counter = "0.6.0"
+num-traits = "0.2.19"
+
+[dependencies.uuid]
+version = "1.11.0"
+features = [
+    "v4",                # Lets you generate random UUIDs
+    "fast-rng",          # Use a faster (but still sufficiently random) RNG
+    "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
+]
 
 [profile.dev.package.faer]
 opt-level = 3
