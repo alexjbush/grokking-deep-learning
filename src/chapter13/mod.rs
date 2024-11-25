@@ -15,7 +15,7 @@ pub const CHAPTER: Chapter = Chapter {
 
 const CHAPTER13A: Activity = Activity {
     task: chapter13a,
-    name: "TIntroduction to Autograd",
+    name: "Introduction to Autograd",
     id: "13a",
 };
 
@@ -81,11 +81,13 @@ where
     }
 
     pub fn backwards<'b>(&self, grad: &Tensor<'a, T>) -> Gradients<'a, T> {
-        let mut to_visit: Vec<(&Tensor<T>, HashSet<Uuid>)> = self
-            .creators
-            .iter()
-            .map(|v| (*v, HashSet::from([self.id])))
-            .collect();
+        // let mut to_visit: Vec<(&Tensor<T>, HashSet<Uuid>)> = self
+        //     .creators
+        //     .iter()
+        //     .map(|v| (*v, HashSet::from([self.id])))
+        //     .collect();
+
+        let mut to_visit: Vec<(&Tensor<T>, HashSet<Uuid>)> = vec![(self, HashSet::new())];
 
         let mut depends_on: HashMap<Uuid, Vec<&Tensor<T>>> = HashMap::new();
 
@@ -116,15 +118,17 @@ where
         while !depends_on.is_empty() {
             let maybe_t = depends_on.iter().find(|(_, contributors)| {
                 contributors.iter().all(|t| grads.grads.contains_key(&t.id))
-            });
+            }).map(|(id, _)| *id);
 
-            if let Some((id, ts)) = maybe_t {
+            let deps = depends_on.keys().collect::<Vec<&Uuid>>();
+            if let Some(id) = maybe_t {
+                let ts = depends_on.remove(&id).unwrap();
                 let mut t_n: Option<Tensor<T>> = None;
 
                 for t in ts {
                     if let Some(acc) = t_n {
                         let op = t.creation_op.as_ref().unwrap();
-                        let grad = grads.grads.get(&t.id).unwrap();
+                        let grad = t.get_gradient(&grads);
                         let new_grad = op.deriv(grad);
                         t_n = Some(Tensor::new(acc.data + new_grad.data));
                     } else {
@@ -133,14 +137,14 @@ where
                 }
 
                 if let Some(t) = t_n {
-                    grads.grads.insert(*id, t);
+                    grads.grads.insert(id, t);
                 } else {
                     panic!("Tensor with id {} has no upstream grads", id);
                 }
             } else {
                 panic!(
                     "Could not resolve all dependencies for remaining tensors: {:?}",
-                    depends_on.keys().collect::<Vec<&Uuid>>()
+                    deps
                 );
             }
         }
@@ -167,15 +171,15 @@ fn chapter13a() -> Result<(), std::io::Error> {
     let a = Tensor::new(array![1.0, 2.0, 3.0, 4.0, 5.0].into_dyn());
     let b = Tensor::new(array![2.0, 2.0, 2.0, 2.0, 2.0].into_dyn());
     let c = Tensor::new(array![5.0, 4.0, 3.0, 2.0, 1.0].into_dyn());
-    let d = Tensor::new(array![-1.0, -2.0, -3.0, -4.0, -5.0].into_dyn());
+    // let d = Tensor::new(array![-1.0, -2.0, -3.0, -4.0, -5.0].into_dyn());
 
-    let e = &a + &b;
-    let f = &c + &d;
-    let g = &e + &f;
+    let d = &a + &b;
+    let e = &b + &c;
+    let f = &d + &e;
 
-    let grads = g.backwards(&Tensor::new(array![1.0, 1.0, 1.0, 1.0, 1.0].into_dyn()));
+    let grads = f.backwards(&Tensor::new(array![1.0, 1.0, 1.0, 1.0, 1.0].into_dyn()));
 
-    println!("{:?}", &a.get_gradient(&grads).data);
+    println!("{:?}", &b.get_gradient(&grads).data);
 
     Ok(())
 }
