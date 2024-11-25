@@ -132,7 +132,7 @@ where
                         let new_grad = op.deriv(grad);
                         t_n = Some(Tensor::new(acc.data + new_grad.data));
                     } else {
-                        t_n = Some(Tensor::new(t.data.clone()));
+                        t_n = Some(Tensor::new(t.get_gradient(&grads).get_data().clone()));
                     }
                 }
 
