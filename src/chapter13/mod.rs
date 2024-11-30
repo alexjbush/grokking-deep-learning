@@ -1,10 +1,21 @@
 use crate::{Activity, Chapter};
 use ndarray::array;
+use ndarray::Array;
 use ndarray::ArrayD;
+use ndarray::Dim;
+use ndarray::Dimension;
+use ndarray::Ix1;
+use ndarray::Ix2;
+use ndarray_rand::rand::seq::SliceRandom;
+use ndarray_rand::rand_distr::num_traits::ToPrimitive;
+use ndarray_rand::{rand::SeedableRng, rand_distr::Uniform, RandomExt};
+use rand_chacha::ChaCha8Rng;
+use std::iter;
 use std::{
     collections::{HashMap, HashSet},
     ops::{self},
 };
+
 use uuid::Uuid;
 pub const CHAPTER: Chapter = Chapter {
     activities: &ACTIVITIES,
@@ -38,7 +49,9 @@ struct Mul();
 struct Sum {
     dim: usize,
 }
-struct Expand();
+struct Expand {
+    dim: usize,
+}
 struct Transpose();
 struct MM();
 
@@ -51,7 +64,7 @@ impl Operation for Add {
         assert!(creators.len() == 2);
         creators
             .iter()
-            .map(|t| (t.id, Tensor::new(grad.data.clone())))
+            .map(|t| (t.id, Tensor::new(grad.data.clone(), false)))
             .collect()
     }
 }
@@ -63,7 +76,7 @@ impl Operation for Neg {
         creators: &Vec<&Tensor<f64>>,
     ) -> HashMap<Uuid, Tensor<f64>> {
         assert!(creators.len() == 1);
-        HashMap::from([(creators[0].id, Tensor::new(-&grad.data))])
+        HashMap::from([(creators[0].id, Tensor::new(-&grad.data, false))])
     }
 }
 
@@ -75,8 +88,8 @@ impl Operation for Sub {
     ) -> HashMap<Uuid, Tensor<f64>> {
         assert!(creators.len() == 2);
         HashMap::from([
-            (creators[0].id, Tensor::new(grad.data.clone())),
-            (creators[1].id, Tensor::new(-&grad.data)),
+            (creators[0].id, Tensor::new(grad.data.clone(), false)),
+            (creators[1].id, Tensor::new(-&grad.data, false)),
         ])
     }
 }
@@ -89,8 +102,14 @@ impl Operation for Mul {
     ) -> HashMap<Uuid, Tensor<f64>> {
         assert!(creators.len() == 2);
         HashMap::from([
-            (creators[0].id, Tensor::new(&grad.data * &creators[1].data)),
-            (creators[1].id, Tensor::new(&grad.data * &creators[0].data)),
+            (
+                creators[0].id,
+                Tensor::new(&grad.data * &creators[1].data, false),
+            ),
+            (
+                creators[1].id,
+                Tensor::new(&grad.data * &creators[0].data, false),
+            ),
         ])
     }
 }
@@ -102,13 +121,17 @@ impl Operation for MM {
         creators: &Vec<&Tensor<f64>>,
     ) -> HashMap<Uuid, Tensor<f64>> {
         assert!(creators.len() == 2);
-        todo!();
-        // let act = creators[0];
-        // let weights = creators[1];
-        // HashMap::from([
-        //     (creators[0].id, Tensor::new(&grad.data * &creators[1].data)),
-        //     (creators[1].id, Tensor::new(&grad.data * &creators[0].data)),
-        // ])
+        let act = creators[0];
+        let weights = creators[1];
+        let w_t = weights.transpose();
+        let new = grad.mm(&w_t);
+        let g_t = grad.transpose();
+        let g_t__mm__act = g_t.mm(act);
+        let new_new = g_t__mm__act.transpose();
+        HashMap::from([
+            (act.id, Tensor::new(new.data, false)),
+            (weights.id, Tensor::new(new_new.data, false)),
+        ])
     }
 }
 
@@ -119,8 +142,10 @@ impl Operation for Sum {
         creators: &Vec<&Tensor<f64>>,
     ) -> HashMap<Uuid, Tensor<f64>> {
         assert!(creators.len() == 1);
-        todo!();
-        // HashMap::from([(creators[0].id, Tensor::new(grad.data.t().to_owned()))])
+        let dim = self.dim;
+        let ds = creators[0].data.dim()[dim];
+        let new = grad.expand(dim, ds);
+        HashMap::from([(creators[0].id, Tensor::new(new.data, false))])
     }
 }
 
@@ -131,7 +156,9 @@ impl Operation for Expand {
         creators: &Vec<&Tensor<f64>>,
     ) -> HashMap<Uuid, Tensor<f64>> {
         assert!(creators.len() == 1);
-        todo!()
+        let dim = self.dim;
+        let new = grad.sum(dim);
+        HashMap::from([(creators[0].id, Tensor::new(new.data, false))])
     }
 }
 
@@ -142,7 +169,7 @@ impl Operation for Transpose {
         creators: &Vec<&Tensor<f64>>,
     ) -> HashMap<Uuid, Tensor<f64>> {
         assert!(creators.len() == 1);
-        HashMap::from([(creators[0].id, Tensor::new(grad.data.t().to_owned()))])
+        HashMap::from([(creators[0].id, Tensor::new(grad.data.t().to_owned(), false))])
     }
 }
 
@@ -153,15 +180,17 @@ pub struct Gradients<'a> {
 pub struct Tensor<'a, T> {
     id: Uuid,
     data: ArrayD<T>,
+    autograd: bool,
     creators: Vec<&'a Tensor<'a, T>>,
     creation_op: Option<Box<dyn Operation>>,
 }
 
 impl<'a, T> Tensor<'a, T> {
-    pub fn new(data: ArrayD<T>) -> Tensor<'a, T> {
+    pub fn new(data: ArrayD<T>, autograd: bool) -> Tensor<'a, T> {
         Tensor {
             id: Uuid::new_v4(),
             data,
+            autograd,
             creators: vec![],
             creation_op: None,
         }
@@ -175,6 +204,7 @@ impl<'a, T> Tensor<'a, T> {
         Tensor {
             id: Uuid::new_v4(),
             data,
+            autograd: true,
             creators,
             creation_op,
         }
@@ -202,12 +232,13 @@ impl<'a> Tensor<'a, f64> {
         let mut depends_on: HashMap<Uuid, Vec<&Tensor<f64>>> = HashMap::from([(self.id, vec![])]);
 
         let mut grads = Gradients {
-            grads: HashMap::from([(self.id, Tensor::new(grad.data.clone()))]),
+            grads: HashMap::from([(self.id, Tensor::new(grad.data.clone(), false))]),
         };
 
         let mut id_to_tensor: HashMap<Uuid, &Tensor<f64>> = HashMap::new();
 
         while let Some((t, h)) = to_visit.pop() {
+            assert!(t.autograd);
             id_to_tensor.insert(t.id, t);
             t.creators.iter().for_each(|v| {
                 if h.contains(&t.id) {
@@ -248,7 +279,9 @@ impl<'a> Tensor<'a, f64> {
                     let res = op.deriv(this.get_gradient(&grads), &this.creators);
                     for (id, g) in res {
                         if let Some(gg) = grads.grads.get(&id) {
-                            grads.grads.insert(id, Tensor::new(&gg.data + g.data));
+                            grads
+                                .grads
+                                .insert(id, Tensor::new(&gg.data + g.data, false));
                         } else {
                             grads.grads.insert(id, g);
                         }
@@ -265,23 +298,84 @@ impl<'a> Tensor<'a, f64> {
     }
 
     pub fn sum(&'a self, dim: usize) -> Tensor<'a, f64> {
-        Tensor::new_with_creators(
-            self.get_data().sum_axis(ndarray::Axis(dim)),
-            vec![self],
-            Some(Box::new(Sum { dim })),
-        )
+        let data = self.get_data().sum_axis(ndarray::Axis(dim));
+        if self.autograd {
+            Tensor::new_with_creators(data, vec![self], Some(Box::new(Sum { dim })))
+        } else {
+            Tensor::new(data, false)
+        }
     }
 
     pub fn transpose(&'a self) -> Tensor<'a, f64> {
-        Tensor::new_with_creators(
-            self.get_data().t().to_owned(),
-            vec![self],
-            Some(Box::new(Transpose())),
-        )
+        let data = self.get_data().t().to_owned();
+        if self.autograd {
+            Tensor::new_with_creators(data, vec![self], Some(Box::new(Transpose())))
+        } else {
+            Tensor::new(data, false)
+        }
     }
 
     pub fn expand(&'a self, dim: usize, copies: usize) -> Tensor<'a, f64> {
-        this doesn;t work
+        let mut trans_cmd: Vec<usize> = (0..self.data.ndim()).collect();
+        trans_cmd.insert(dim, self.data.ndim());
+        let new_shape = self.data.dim() + Dim(copies).into_dyn();
+        let _new_data: Vec<f64> = self
+            .data
+            .iter()
+            .flat_map(|v| iter::repeat(*v).take(copies))
+            .collect();
+        let data = ArrayD::from_shape_vec(new_shape, _new_data)
+            .unwrap()
+            .permuted_axes(trans_cmd);
+        if self.autograd {
+            Tensor::new_with_creators(data, vec![self], Some(Box::new(Expand { dim })))
+        } else {
+            Tensor::new(data, false)
+        }
+    }
+
+    pub fn mm(&'a self, _rhs: &'a Self) -> Tensor<'a, f64> {
+        let data = if self.data.ndim() == 1 && _rhs.data.ndim() == 1 {
+            array![self
+                .data
+                .to_owned()
+                .into_dimensionality::<Ix1>()
+                .unwrap()
+                .dot(&_rhs.data.to_owned().into_dimensionality::<Ix1>().unwrap())]
+            .into_dyn()
+        } else if self.data.ndim() == 1 && _rhs.data.ndim() == 2 {
+            self.data
+                .to_owned()
+                .into_dimensionality::<Ix1>()
+                .unwrap()
+                .dot(&_rhs.data.to_owned().into_dimensionality::<Ix2>().unwrap())
+                .into_dyn()
+        } else if self.data.ndim() == 2 && _rhs.data.ndim() == 1 {
+            self.data
+                .to_owned()
+                .into_dimensionality::<Ix2>()
+                .unwrap()
+                .dot(&_rhs.data.to_owned().into_dimensionality::<Ix1>().unwrap())
+                .into_dyn()
+        } else if self.data.ndim() == 2 && _rhs.data.ndim() == 2 {
+            self.data
+                .to_owned()
+                .into_dimensionality::<Ix2>()
+                .unwrap()
+                .dot(&_rhs.data.to_owned().into_dimensionality::<Ix2>().unwrap())
+                .into_dyn()
+        } else {
+            panic!(
+                "Unsupported dimension size for mm: [{}] and [{}]",
+                self.data.ndim(),
+                _rhs.data.ndim()
+            )
+        };
+        if self.autograd {
+            Tensor::new_with_creators(data, vec![self, _rhs], Some(Box::new(MM())))
+        } else {
+            Tensor::new(data, false)
+        }
     }
 }
 
@@ -289,11 +383,12 @@ impl<'a> ops::Add for &'a Tensor<'a, f64> {
     type Output = Tensor<'a, f64>;
 
     fn add(self, _rhs: Self) -> Self::Output {
-        Tensor::new_with_creators(
-            self.get_data() + _rhs.get_data(),
-            vec![self, _rhs],
-            Some(Box::new(Add())),
-        )
+        let data = self.get_data() + _rhs.get_data();
+        if self.autograd {
+            Tensor::new_with_creators(data, vec![self, _rhs], Some(Box::new(Add())))
+        } else {
+            Tensor::new(data, false)
+        }
     }
 }
 
@@ -301,7 +396,13 @@ impl<'a> ops::Neg for &'a Tensor<'a, f64> {
     type Output = Tensor<'a, f64>;
 
     fn neg(self) -> Self::Output {
-        Tensor::new_with_creators(-(self.get_data()), vec![self], Some(Box::new(Neg())))
+        let data = -(self.get_data());
+
+        if self.autograd {
+            Tensor::new_with_creators(data, vec![self], Some(Box::new(Neg())))
+        } else {
+            Tensor::new(data, false)
+        }
     }
 }
 
@@ -309,11 +410,12 @@ impl<'a> ops::Sub for &'a Tensor<'a, f64> {
     type Output = Tensor<'a, f64>;
 
     fn sub(self, _rhs: Self) -> Self::Output {
-        Tensor::new_with_creators(
-            self.get_data() - _rhs.get_data(),
-            vec![self, _rhs],
-            Some(Box::new(Sub())),
-        )
+        let data = self.get_data() - _rhs.get_data();
+        if self.autograd {
+            Tensor::new_with_creators(data, vec![self, _rhs], Some(Box::new(Sub())))
+        } else {
+            Tensor::new(data, false)
+        }
     }
 }
 
@@ -321,25 +423,29 @@ impl<'a> ops::Mul for &'a Tensor<'a, f64> {
     type Output = Tensor<'a, f64>;
 
     fn mul(self, _rhs: Self) -> Self::Output {
-        Tensor::new_with_creators(
-            self.get_data() * _rhs.get_data(),
-            vec![self, _rhs],
-            Some(Box::new(Mul())),
-        )
+        let data = self.get_data() * _rhs.get_data();
+        if self.autograd {
+            Tensor::new_with_creators(data, vec![self, _rhs], Some(Box::new(Mul())))
+        } else {
+            Tensor::new(data, false)
+        }
     }
 }
 
 fn chapter13a() -> Result<(), std::io::Error> {
-    let a = Tensor::new(array![1.0, 2.0, 3.0, 4.0, 5.0].into_dyn());
-    let b = Tensor::new(array![2.0, 2.0, 2.0, 2.0, 2.0].into_dyn());
-    let c = Tensor::new(array![5.0, 4.0, 3.0, 2.0, 1.0].into_dyn());
+    let a = Tensor::new(array![1.0, 2.0, 3.0, 4.0, 5.0].into_dyn(), true);
+    let b = Tensor::new(array![2.0, 2.0, 2.0, 2.0, 2.0].into_dyn(), true);
+    let c = Tensor::new(array![5.0, 4.0, 3.0, 2.0, 1.0].into_dyn(), true);
     // let d = Tensor::new(array![-1.0, -2.0, -3.0, -4.0, -5.0].into_dyn());
 
     let d = &a + &b;
     let e = &b + &c;
     let f = &d + &e;
 
-    let grads = f.backwards(&Tensor::new(array![1.0, 1.0, 1.0, 1.0, 1.0].into_dyn()));
+    let grads = f.backwards(&Tensor::new(
+        array![1.0, 1.0, 1.0, 1.0, 1.0].into_dyn(),
+        false,
+    ));
 
     println!("{:?}", &b.get_gradient(&grads).data);
 
@@ -347,9 +453,9 @@ fn chapter13a() -> Result<(), std::io::Error> {
 }
 
 fn chapter13b() -> Result<(), std::io::Error> {
-    let a = Tensor::new(array![1.0, 2.0, 3.0, 4.0, 5.0].into_dyn());
-    let b = Tensor::new(array![2.0, 2.0, 2.0, 2.0, 2.0].into_dyn());
-    let c = Tensor::new(array![5.0, 4.0, 3.0, 2.0, 1.0].into_dyn());
+    let a = Tensor::new(array![1.0, 2.0, 3.0, 4.0, 5.0].into_dyn(), true);
+    let b = Tensor::new(array![2.0, 2.0, 2.0, 2.0, 2.0].into_dyn(), true);
+    let c = Tensor::new(array![5.0, 4.0, 3.0, 2.0, 1.0].into_dyn(), true);
     // let d = Tensor::new(array![-1.0, -2.0, -3.0, -4.0, -5.0].into_dyn());
 
     let negb1 = -&b;
@@ -358,9 +464,51 @@ fn chapter13b() -> Result<(), std::io::Error> {
     let e = &negb2 + &c;
     let f = &d + &e;
 
-    let grads = f.backwards(&Tensor::new(array![1.0, 1.0, 1.0, 1.0, 1.0].into_dyn()));
+    let grads = f.backwards(&Tensor::new(
+        array![1.0, 1.0, 1.0, 1.0, 1.0].into_dyn(),
+        false,
+    ));
 
     println!("{:?}", &b.get_gradient(&grads).data);
+
+    Ok(())
+}
+
+fn chapter13c() -> Result<(), std::io::Error> {
+    let data = Tensor::new(
+        array![[0.0, 0.0], [0.0, 1.0], [1.0, 0.0], [1.0, 1.0]].into_dyn(),
+        true,
+    );
+    let target = Tensor::new(array![[0.0], [1.0], [0.0], [1.0]].into_dyn(), true);
+
+    let mut rng = ChaCha8Rng::seed_from_u64(1);
+
+    let mut w0 = Array::random_using((2, 3), Uniform::new(0.0, 1.0), &mut rng).into_dyn();
+    let mut w1 = Array::random_using((3, 1), Uniform::new(0.0, 1.0), &mut rng).into_dyn();
+
+    let mut w = vec![Tensor::new(w0, true), Tensor::new(w1, true)];
+
+    for i in 0..10 {
+        let g = (&data).mm(&w[0]);
+        let pred = (g).mm(&w[1]);
+
+        let diff = &pred - &target;
+        let double = &diff * &diff;
+        let loss = double.sum(0);
+
+        let grad = Tensor::new(Array::ones(loss.data.dim()), false);
+        let grads = loss.backwards(&grad);
+
+        for i  in 0..w.len() {
+            let g = (&w[i]).get_gradient(&grads);
+            let new_data = &w[i].data - &g.data*0.1;
+            let mut w_i_data = w.get_mut(i).unwrap();
+            w_i_data.data = &w_i_data.data - new_data;
+        }
+        // println!("{:?}",loss.data);
+    }
+
+    
 
     Ok(())
 }
