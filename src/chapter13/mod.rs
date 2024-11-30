@@ -35,7 +35,13 @@ const CHAPTER13B: Activity = Activity {
     id: "13b",
 };
 
-const ACTIVITIES: [Activity; 2] = [CHAPTER13A, CHAPTER13B];
+const CHAPTER13C: Activity = Activity {
+    task: chapter13c,
+    name: "Using autograd to train a neural network",
+    id: "13c",
+};
+
+const ACTIVITIES: [Activity; 3] = [CHAPTER13A, CHAPTER13B, CHAPTER13C];
 
 trait Operation {
     fn deriv(&self, grad: &Tensor<f64>, creators: &Vec<&Tensor<f64>>)
@@ -318,7 +324,8 @@ impl<'a> Tensor<'a, f64> {
     pub fn expand(&'a self, dim: usize, copies: usize) -> Tensor<'a, f64> {
         let mut trans_cmd: Vec<usize> = (0..self.data.ndim()).collect();
         trans_cmd.insert(dim, self.data.ndim());
-        let new_shape = self.data.dim() + Dim(copies).into_dyn();
+        let new_shape = vec![self.data.dim().as_array_view().to_vec(), vec![copies]].concat();
+        // println!("Old: {:?}, New: {:?}", self.data.dim(), new_shape);
         let _new_data: Vec<f64> = self
             .data
             .iter()
@@ -486,11 +493,12 @@ fn chapter13c() -> Result<(), std::io::Error> {
     let mut w0 = Array::random_using((2, 3), Uniform::new(0.0, 1.0), &mut rng).into_dyn();
     let mut w1 = Array::random_using((3, 1), Uniform::new(0.0, 1.0), &mut rng).into_dyn();
 
-    let mut w = vec![Tensor::new(w0, true), Tensor::new(w1, true)];
+    for _ in 0..10 {
+        let t0 = Tensor::new(w0.clone(), true);
+        let t1 = Tensor::new(w1.clone(), true);
 
-    for i in 0..10 {
-        let g = (&data).mm(&w[0]);
-        let pred = (g).mm(&w[1]);
+        let g = (&data).mm(&t0);
+        let pred = (g).mm(&t1);
 
         let diff = &pred - &target;
         let double = &diff * &diff;
@@ -499,16 +507,13 @@ fn chapter13c() -> Result<(), std::io::Error> {
         let grad = Tensor::new(Array::ones(loss.data.dim()), false);
         let grads = loss.backwards(&grad);
 
-        for i  in 0..w.len() {
-            let g = (&w[i]).get_gradient(&grads);
-            let new_data = &w[i].data - &g.data*0.1;
-            let mut w_i_data = w.get_mut(i).unwrap();
-            w_i_data.data = &w_i_data.data - new_data;
-        }
-        // println!("{:?}",loss.data);
-    }
+        let g0 = t0.get_gradient(&grads);
+        let g1 = t1.get_gradient(&grads);
 
-    
+        w0 = &w0 - &g0.data * 0.1;
+        w1 = &w1 - &g1.data * 0.1;
+        println!("{:?}", loss.data);
+    }
 
     Ok(())
 }
